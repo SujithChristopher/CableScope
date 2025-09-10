@@ -9,6 +9,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Direct execution**: `python python_gui/main.py` - Run directly if dependencies are installed
 - **Install dependencies**: `pip install -r python_gui/requirements.txt`
 
+### Testing Environment
+- **Python interpreter**: `C:\Users\Pintu\miniconda3\envs\py13\python.exe` (Python 3.13 conda environment)
+- **Test dependencies**: `"C:\Users\Pintu\miniconda3\envs\py13\python.exe" -m pip install -r python_gui/requirements.txt`
+- **Test execution**: `"C:\Users\Pintu\miniconda3\envs\py13\python.exe" python_gui/main.py`
+
 ### Firmware Development
 - **Arduino CLI required**: Download from arduino.github.io/arduino-cli or use included `arduino-cli.exe`
 - **Firmware compilation**: Use the GUI Firmware tab or Arduino CLI directly
