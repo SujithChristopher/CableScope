@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//e/CMC/pyprojects/wave_craze/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
