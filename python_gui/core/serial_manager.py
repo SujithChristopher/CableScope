@@ -89,6 +89,33 @@ class SerialCommunicationManager(QObject):
                 pass
             return []
     
+    def find_teensy_port(self, ports: List[str]) -> Optional[str]:
+        """Find the Teensy port from a list of ports"""
+        try:
+            all_ports = serial.tools.list_ports.comports()
+            for port in all_ports:
+                if port.device in ports:
+                    # Check for Teensy VID:PID (16C0:0483 or other Teensy IDs)
+                    hwid = port.hwid.upper()
+                    if any(teensy_id in hwid for teensy_id in [
+                        '16C0:0483',  # Teensy 4.x
+                        '16C0:0476',  # Teensy 3.x
+                        '16C0:0478',  # Teensy LC
+                        'USB VID:PID=16C0'  # Any Teensy
+                    ]):
+                        print(f"DEBUG: Found Teensy on {port.device}: {port.description}")
+                        return port.device
+                        
+                    # Also check for "USB Serial Device" description as fallback
+                    if 'USB SERIAL DEVICE' in port.description.upper() and '16C0' in hwid:
+                        print(f"DEBUG: Found USB Serial Device (likely Teensy) on {port.device}")
+                        return port.device
+                        
+        except Exception as e:
+            print(f"DEBUG: Error finding Teensy port: {e}")
+            
+        return None
+    
     def scan_ports(self):
         """Scan for available ports and emit signal if changed"""
         if not self._scanning_enabled:

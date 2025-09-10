@@ -330,14 +330,50 @@ class FirmwareTab(QWidget):
             port_names = [port.device for port in ports]
             self.port_combo.addItems(port_names)
             
-            # Restore selection if possible
-            if current_selection in port_names:
+            # Auto-select Teensy port if no current selection or if current selection not available
+            if not current_selection or current_selection not in port_names:
+                teensy_port = self.find_teensy_port(ports)
+                if teensy_port:
+                    self.port_combo.setCurrentText(teensy_port)
+                    print(f"DEBUG: Auto-selected Teensy port in firmware tab: {teensy_port}")
+                elif port_names:
+                    # Fallback: select first available port
+                    self.port_combo.setCurrentText(port_names[0])
+                    print(f"DEBUG: No Teensy found in firmware tab, selected first port: {port_names[0]}")
+            elif current_selection in port_names:
+                # Restore previous selection if still available
                 self.port_combo.setCurrentText(current_selection)
+                print(f"DEBUG: Restored firmware port selection: {current_selection}")
             
             self.add_log_message(f"Found {len(port_names)} COM ports: {', '.join(port_names)}")
             
         except Exception as e:
             self.add_log_message(f"Error refreshing ports: {e}")
+    
+    def find_teensy_port(self, ports):
+        """Find the Teensy port from available ports"""
+        try:
+            for port in ports:
+                # Check for Teensy VID:PID (16C0:0483 or other Teensy IDs)
+                hwid = port.hwid.upper()
+                if any(teensy_id in hwid for teensy_id in [
+                    '16C0:0483',  # Teensy 4.x
+                    '16C0:0476',  # Teensy 3.x
+                    '16C0:0478',  # Teensy LC
+                    'USB VID:PID=16C0'  # Any Teensy
+                ]):
+                    print(f"DEBUG: Found Teensy in firmware tab on {port.device}: {port.description}")
+                    return port.device
+                    
+                # Also check for "USB Serial Device" description as fallback
+                if 'USB SERIAL DEVICE' in port.description.upper() and '16C0' in hwid:
+                    print(f"DEBUG: Found USB Serial Device (likely Teensy) in firmware tab on {port.device}")
+                    return port.device
+                    
+        except Exception as e:
+            print(f"DEBUG: Error finding Teensy port in firmware tab: {e}")
+            
+        return None
     
     def add_log_message(self, message: str):
         """Add message to upload log"""

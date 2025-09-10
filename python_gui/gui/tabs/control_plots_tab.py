@@ -825,12 +825,29 @@ class ControlPlotsTab(QWidget):
         self.port_combo.addItems(ports)
         print(f"DEBUG: Added {len(ports)} ports to combo box")
         
-        # Restore selection if possible
-        if current_selection in ports:
+        # Auto-select Teensy port if no current selection or if current selection not available
+        if not current_selection or current_selection not in ports:
+            teensy_port = self.find_teensy_port(ports)
+            if teensy_port:
+                self.port_combo.setCurrentText(teensy_port)
+                print(f"DEBUG: Auto-selected Teensy port: {teensy_port}")
+            elif ports:
+                # Fallback: select first available port
+                self.port_combo.setCurrentText(ports[0])
+                print(f"DEBUG: No Teensy found, selected first port: {ports[0]}")
+        elif current_selection in ports:
+            # Restore previous selection if still available
             self.port_combo.setCurrentText(current_selection)
             print(f"DEBUG: Restored selection: {current_selection}")
         
         self.update_ui_state()
+    
+    def find_teensy_port(self, ports: List[str]) -> Optional[str]:
+        """Find the Teensy port from available ports"""
+        # Import here to avoid circular import
+        from core.serial_manager import SerialCommunicationManager
+        temp_manager = SerialCommunicationManager()
+        return temp_manager.find_teensy_port(ports)
     
     def update_current_values(self, data: Dict[str, float]):
         """Update current torque and angle displays"""

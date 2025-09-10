@@ -32,7 +32,7 @@ def main():
     # Enable high DPI scaling
     app.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
-    
+
     try:
         # Initialize error handler
         error_handler = ErrorHandler()
