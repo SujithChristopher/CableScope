@@ -98,12 +98,7 @@ void loop() {
   }
 }
 
-// Function to read encoder angle in degrees
-float angle_motor() {
-  _enccount = angle.read();
-  float angleDegrees = _enccount * ENC1COUNT2DEG;
-  return angleDegrees;
-}
+// Function to read encoder angle in degrees is defined in angle_motor.ino
 
 // Handle incoming serial commands from Python
 void handleSerialCommands() {

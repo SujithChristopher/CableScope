@@ -33,6 +33,7 @@ class ControlPlotsTab(QWidget):
     plot_settings_changed = Signal(dict)
     recording_start_requested = Signal(str)
     recording_stop_requested = Signal()
+    refresh_ports_requested = Signal()
     
     def __init__(self):
         super().__init__()
@@ -170,13 +171,18 @@ class ControlPlotsTab(QWidget):
         
         self.disconnect_button = QPushButton("Disconnect")
         self.disconnect_button.clicked.connect(self.on_disconnect_clicked)
-        layout.addWidget(self.disconnect_button, 1, 2)
+        layout.addWidget(self.disconnect_button, 0, 3)
+        
+        # Refresh ports button
+        self.refresh_ports_button = QPushButton("Refresh")
+        self.refresh_ports_button.clicked.connect(self.on_refresh_ports_clicked)
+        layout.addWidget(self.refresh_ports_button, 1, 2)
         
         # Connection status
         layout.addWidget(QLabel("Status:"), 1, 0)
         self.connection_status_label = QLabel("Disconnected")
         self.connection_status_label.setStyleSheet("color: red; font-weight: bold;")
-        layout.addWidget(self.connection_status_label, 1, 1)
+        layout.addWidget(self.connection_status_label, 1, 1, 1, 2)  # Span 2 columns
         
         return group
     
@@ -266,11 +272,17 @@ class ControlPlotsTab(QWidget):
         self.data_rate_label = QLabel("0.0 Hz")
         layout.addWidget(self.data_rate_label, 2, 1, 1, 2)
         
-        # Last command
+        # Last command with status
         layout.addWidget(QLabel("Last Cmd:"), 3, 0)
         self.last_command_label = QLabel("None")
         self.last_command_label.setWordWrap(True)
         layout.addWidget(self.last_command_label, 3, 1, 1, 2)
+        
+        # Command status indicator
+        layout.addWidget(QLabel("Cmd Status:"), 4, 0)
+        self.command_status_label = QLabel("Ready")
+        self.command_status_label.setStyleSheet("color: gray; font-weight: bold;")
+        layout.addWidget(self.command_status_label, 4, 1, 1, 2)
         
         return group
     
@@ -499,9 +511,14 @@ class ControlPlotsTab(QWidget):
     @Slot()
     def on_connect_clicked(self):
         """Handle connect button click"""
+        print("DEBUG: Connect button clicked")
         selected_port = self.port_combo.currentText()
+        print(f"DEBUG: Selected port: {selected_port}")
         if selected_port:
+            print(f"DEBUG: Emitting connection_requested signal for {selected_port}")
             self.connection_requested.emit(selected_port)
+        else:
+            print("DEBUG: No port selected")
     
     @Slot()
     def on_disconnect_clicked(self):
@@ -527,6 +544,8 @@ class ControlPlotsTab(QWidget):
     def on_send_torque_clicked(self):
         """Handle send torque button click"""
         torque_value = self.torque_spinbox.value()
+        self.command_status_label.setText("Sending...")
+        self.command_status_label.setStyleSheet("color: orange; font-weight: bold;")
         self.torque_command_requested.emit(torque_value)
         self.last_command_label.setText(f"{torque_value:.3f} Nm at {time.strftime('%H:%M:%S')}")
     
@@ -571,6 +590,13 @@ class ControlPlotsTab(QWidget):
         """Handle zero torque button click"""
         self.set_torque_value(0.0)
         self.torque_command_requested.emit(0.0)
+    
+    @Slot()
+    def on_refresh_ports_clicked(self):
+        """Handle refresh ports button click"""
+        print("DEBUG: Refresh ports button clicked")
+        self.refresh_ports_requested.emit()
+        print("DEBUG: Refresh ports signal emitted")
     
     # Plot event handlers
     @Slot(float)
@@ -787,18 +813,22 @@ class ControlPlotsTab(QWidget):
     
     def update_available_ports(self, ports: List[str]):
         """Update available COM ports"""
+        print(f"DEBUG: update_available_ports called with: {ports}")
         self.available_ports = ports
         
         # Save current selection
         current_selection = self.port_combo.currentText()
+        print(f"DEBUG: Current selection: {current_selection}")
         
         # Update combo box
         self.port_combo.clear()
         self.port_combo.addItems(ports)
+        print(f"DEBUG: Added {len(ports)} ports to combo box")
         
         # Restore selection if possible
         if current_selection in ports:
             self.port_combo.setCurrentText(current_selection)
+            print(f"DEBUG: Restored selection: {current_selection}")
         
         self.update_ui_state()
     
@@ -815,6 +845,15 @@ class ControlPlotsTab(QWidget):
     def update_data_rate(self, rate: float):
         """Update data reception rate display"""
         self.data_rate_label.setText(f"{rate:.1f} Hz")
+    
+    def set_command_status(self, status: str, color: str = "gray"):
+        """Update command status display"""
+        self.command_status_label.setText(status)
+        self.command_status_label.setStyleSheet(f"color: {color}; font-weight: bold;")
+    
+    def on_command_acknowledged(self):
+        """Handle command acknowledgment"""
+        self.set_command_status("✓ Sent", "green")
     
     def clear_all_data(self):
         """Clear all plot data"""

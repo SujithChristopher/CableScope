@@ -72,13 +72,21 @@ class SerialCommunicationManager(QObject):
         """Get list of available serial ports"""
         try:
             ports = serial.tools.list_ports.comports()
-            return [port.device for port in ports if port.device]
+            available_ports = [port.device for port in ports if port.device]
+            print(f"DEBUG: Available ports: {available_ports}")
+            for port in ports:
+                print(f"DEBUG: Port {port.device}: {port.description} [{port.hwid}]")
+            return available_ports
         except RecursionError:
             # Handle recursion error specifically to prevent infinite loops
             print("RecursionError occurred while scanning ports - returning empty list")
             return []
         except Exception as e:
-            self.error_occurred.emit(f"Error scanning ports: {e}")
+            print(f"DEBUG: Exception in get_available_ports: {e}")
+            try:
+                self.error_occurred.emit(f"Error scanning ports: {e}")
+            except:
+                pass
             return []
     
     def scan_ports(self):
@@ -88,9 +96,16 @@ class SerialCommunicationManager(QObject):
             
         try:
             current_ports = self.get_available_ports()
+            print(f"DEBUG: Current ports from scan: {current_ports}")
+            print(f"DEBUG: Last known ports: {self._last_ports}")
+            
             if current_ports != self._last_ports:
                 self._last_ports = current_ports
+                print(f"DEBUG: Port list changed, emitting ports_updated signal with: {current_ports}")
                 self.ports_updated.emit(current_ports)
+            else:
+                print(f"DEBUG: Port list unchanged, not emitting signal")
+                
         except RecursionError:
             print("RecursionError in scan_ports - skipping scan")
         except Exception as e:
@@ -101,14 +116,40 @@ class SerialCommunicationManager(QObject):
     
     def disable_scanning(self):
         """Disable port scanning (for shutdown)"""
+        print("DEBUG: Port scanning disabled")
         self._scanning_enabled = False
+    
+    def enable_scanning(self):
+        """Enable port scanning"""
+        print("DEBUG: Port scanning enabled")
+        self._scanning_enabled = True
+    
+    def force_scan_ports(self):
+        """Force a port scan regardless of scanning_enabled flag"""
+        print("DEBUG: Force scanning ports...")
+        try:
+            current_ports = self.get_available_ports()
+            if current_ports != self._last_ports:
+                self._last_ports = current_ports
+                self.ports_updated.emit(current_ports)
+                print(f"DEBUG: Emitted ports_updated signal with {len(current_ports)} ports")
+            else:
+                print("DEBUG: Port list unchanged")
+        except RecursionError:
+            print("RecursionError in force_scan_ports - skipping scan")
+        except Exception as e:
+            print(f"Error during force port scan: {e}")
     
     def connect_to_port(self, port: str, baud_rate: int = 115200, timeout: float = 1.0) -> bool:
         """Connect to a serial port"""
+        print(f"DEBUG: Attempting to connect to {port} at {baud_rate} baud")
+        
         if self.is_connected:
+            print("DEBUG: Already connected, disconnecting first")
             self.disconnect()
         
         try:
+            print(f"DEBUG: Opening serial port {port}")
             self.serial_port = serial.Serial(
                 port=port,
                 baudrate=baud_rate,
@@ -116,17 +157,23 @@ class SerialCommunicationManager(QObject):
                 write_timeout=timeout
             )
             
+            print(f"DEBUG: Serial port opened successfully: {self.serial_port}")
+            
             # Wait for connection to stabilize
-            time.sleep(0.5)
+            print("DEBUG: Waiting for connection to stabilize...")
+            time.sleep(1.0)  # Increased delay for Teensy
             
             # Clear any existing data in buffers
+            print("DEBUG: Clearing buffers...")
             self.serial_port.reset_input_buffer()
             self.serial_port.reset_output_buffer()
             
             # Test connection by sending a small torque command
-            test_success = self.send_torque_command(0.0)
+            print("DEBUG: Testing communication with zero torque command...")
+            test_success = self.send_torque_command(0.0, force_send=True)
             
             if test_success:
+                print("DEBUG: Communication test successful")
                 self.is_connected = True
                 self.current_port = port
                 self.baud_rate = baud_rate
@@ -134,15 +181,18 @@ class SerialCommunicationManager(QObject):
                 self.connection_changed.emit(True)
                 return True
             else:
+                print("DEBUG: Communication test failed")
                 self.serial_port.close()
                 self.serial_port = None
                 self.error_occurred.emit(f"Failed to communicate with device on {port}")
                 return False
             
         except serial.SerialException as e:
+            print(f"DEBUG: Serial exception: {e}")
             self.error_occurred.emit(f"Failed to connect to {port}: {e}")
             return False
         except Exception as e:
+            print(f"DEBUG: Unexpected exception: {e}")
             self.error_occurred.emit(f"Unexpected error connecting to {port}: {e}")
             return False
     
@@ -162,12 +212,19 @@ class SerialCommunicationManager(QObject):
         self.current_port = ""
         self.connection_changed.emit(False)
     
-    def send_torque_command(self, torque: float) -> bool:
+    def send_torque_command(self, torque: float, force_send: bool = False) -> bool:
         """Send torque command to the firmware"""
-        if not self.is_connected or not self.serial_port:
+        if not force_send and (not self.is_connected or not self.serial_port):
+            print(f"DEBUG: Cannot send torque command - connected: {self.is_connected}, port: {self.serial_port}")
+            return False
+        
+        if not self.serial_port:
+            print("DEBUG: No serial port available")
             return False
         
         try:
+            print(f"DEBUG: Sending torque command: {torque}")
+            
             # Create command packet: Header(2) + Command(1) + Torque(4)
             packet = bytearray()
             packet.append(self.HEADER1)
@@ -178,27 +235,48 @@ class SerialCommunicationManager(QObject):
             torque_bytes = struct.pack('<f', torque)
             packet.extend(torque_bytes)
             
+            print(f"DEBUG: Packet to send: {' '.join(f'0x{b:02X}' for b in packet)}")
+            
             # Send packet
             self.serial_port.write(packet)
+            self.serial_port.flush()  # Ensure data is sent
             self.last_torque_command = torque
             
+            print("DEBUG: Packet sent, waiting for acknowledgment...")
+            
             # Wait for acknowledgment (with timeout)
+            # Need to parse through potential data packets to find ACK
             start_time = time.time()
-            while time.time() - start_time < 0.5:  # 500ms timeout
-                if self.serial_port.in_waiting >= 3:
-                    ack_data = self.serial_port.read(3)
-                    if (len(ack_data) == 3 and 
-                        ack_data[0] == self.HEADER1 and 
-                        ack_data[1] == self.HEADER2 and 
-                        ack_data[2] == self.ACK_BYTE):
-                        self.command_acknowledged.emit()
-                        return True
+            buffer = bytearray()
+            
+            while time.time() - start_time < 2.0:  # 2 seconds timeout
+                if self.serial_port.in_waiting > 0:
+                    new_data = self.serial_port.read(self.serial_port.in_waiting)
+                    buffer.extend(new_data)
+                    print(f"DEBUG: Buffer now contains {len(buffer)} bytes")
+                    
+                    # Look for ACK pattern in buffer
+                    for i in range(len(buffer) - 2):
+                        if (buffer[i] == self.HEADER1 and 
+                            buffer[i+1] == self.HEADER2 and 
+                            buffer[i+2] == self.ACK_BYTE):
+                            print(f"DEBUG: Found ACK at position {i}")
+                            print("DEBUG: Valid acknowledgment received")
+                            self.command_acknowledged.emit()
+                            return True
+                    
+                    # Remove processed data to prevent buffer overflow
+                    if len(buffer) > 100:  # Keep last 100 bytes
+                        buffer = buffer[-100:]
+                        
                 time.sleep(0.01)
             
+            print("DEBUG: Timeout waiting for acknowledgment")
             self.error_occurred.emit("Torque command acknowledgment timeout")
             return False
             
         except Exception as e:
+            print(f"DEBUG: Exception in send_torque_command: {e}")
             self.error_occurred.emit(f"Error sending torque command: {e}")
             return False
     
@@ -244,16 +322,29 @@ class SerialCommunicationManager(QObject):
             angle_bytes = remaining_data[5:9]
             angle = struct.unpack('<f', angle_bytes)[0]
             
-            # Verify checksum (simplified - using two's complement)
+            # Verify checksum (must match firmware calculation)
+            # Firmware calculates checksum for packet[2] through packet[11] (bytes 2-11)
+            # This corresponds to: packet_size + remaining_data[:-1]
             received_checksum = remaining_data[9] if len(remaining_data) > 9 else 0
             calculated_checksum = 0
-            for byte in header_data[2:] + remaining_data[:-1]:
+            
+            # Add packet size byte (packet[2] in firmware)
+            calculated_checksum += packet_size
+            
+            # Add remaining data bytes except the checksum itself (packet[3] through packet[11])
+            for byte in remaining_data[:-1]:  # All except last byte (checksum)
                 calculated_checksum += byte
-            calculated_checksum = (~calculated_checksum + 1) & 0xFF
+                
+            calculated_checksum = (~calculated_checksum + 1) & 0xFF  # Two's complement
             
             if received_checksum != calculated_checksum:
-                self.error_occurred.emit("Data packet checksum verification failed")
+                print(f"DEBUG: Checksum mismatch - received: 0x{received_checksum:02X}, calculated: 0x{calculated_checksum:02X}")
+                print(f"DEBUG: Packet size: 0x{packet_size:02X}")
+                print(f"DEBUG: Data bytes: {' '.join(f'0x{b:02X}' for b in remaining_data[:-1])}")
+                self.error_occurred.emit(f"Data packet checksum verification failed (got 0x{received_checksum:02X}, expected 0x{calculated_checksum:02X})")
                 return None
+            else:
+                print("DEBUG: Checksum verification passed")
             
             # Update statistics
             self._data_count += 1

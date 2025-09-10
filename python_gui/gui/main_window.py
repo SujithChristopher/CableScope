@@ -51,9 +51,11 @@ class MainWindow(QMainWindow):
         self.setup_ui()
         self.setup_menu_bar()
         self.setup_status_bar()
-        self.setup_connections()
         self.load_configuration()
         self.apply_theme()
+        
+        # Setup connections AFTER all components are initialized
+        self.setup_connections()
         
         # Start systems
         self.start_systems()
@@ -172,7 +174,7 @@ class MainWindow(QMainWindow):
         
         # Refresh ports
         refresh_ports_action = QAction("Refresh COM Ports", self)
-        refresh_ports_action.triggered.connect(self.serial_manager.scan_ports)
+        refresh_ports_action.triggered.connect(self.serial_manager.force_scan_ports)
         tools_menu.addAction(refresh_ports_action)
         
         # Connection test
@@ -195,12 +197,16 @@ class MainWindow(QMainWindow):
     
     def setup_connections(self):
         """Setup signal connections between components"""
+        print("DEBUG: Setting up signal connections...")
+        
         # Serial manager connections
         self.serial_manager.connection_changed.connect(self.on_connection_changed)
         self.serial_manager.data_received.connect(self.on_data_received)
         self.serial_manager.error_occurred.connect(self.on_serial_error)
         self.serial_manager.ports_updated.connect(self.on_ports_updated)
         self.serial_manager.command_acknowledged.connect(self.on_command_acknowledged)
+        
+        print("DEBUG: Serial manager signals connected")
         
         # Error handler connections
         self.error_handler.error_occurred.connect(self.on_error_occurred)
@@ -216,6 +222,10 @@ class MainWindow(QMainWindow):
         self.control_plots_tab.plot_settings_changed.connect(self.on_plot_settings_changed)
         self.control_plots_tab.recording_start_requested.connect(self.start_recording)
         self.control_plots_tab.recording_stop_requested.connect(self.stop_recording)
+        self.control_plots_tab.refresh_ports_requested.connect(self.serial_manager.force_scan_ports)
+        
+        # Connect command acknowledgment to UI feedback
+        self.serial_manager.command_acknowledged.connect(self.control_plots_tab.on_command_acknowledged)
         
         # Settings tab connections  
         self.settings_tab.configuration_changed.connect(self.on_configuration_changed)
@@ -259,13 +269,33 @@ class MainWindow(QMainWindow):
     
     def start_systems(self):
         """Start background systems"""
+        print("DEBUG: Starting systems...")
+        
+        # Clear any previous port cache to ensure fresh scan
+        self.serial_manager._last_ports = []
+        print("DEBUG: Cleared port cache")
+        
+        # Ensure scanning is enabled
+        self.serial_manager.enable_scanning()
+        
         # Start port scanning
+        print("DEBUG: Initial port scan...")
         self.serial_manager.scan_ports()
+        
+        # Force initial population of port list
+        print("DEBUG: Force scanning ports for initial population...")
+        self.serial_manager.force_scan_ports()
         
         # Setup data update timer
         self.data_update_timer = QTimer()
         self.data_update_timer.timeout.connect(self.update_displays)
         self.data_update_timer.start(50)  # 20 Hz update rate
+        
+        # Setup periodic port scanning timer
+        self.port_scan_timer = QTimer()
+        self.port_scan_timer.timeout.connect(self.serial_manager.scan_ports)
+        self.port_scan_timer.start(3000)  # Scan every 3 seconds
+        print("DEBUG: Port scanning timer started")
     
     # Data acquisition methods
     def start_data_acquisition(self):
@@ -374,16 +404,23 @@ class MainWindow(QMainWindow):
     # Connection methods
     def connect_to_port(self, port: str):
         """Connect to specified port"""
+        print(f"DEBUG: Main window connect_to_port called with port: {port}")
         try:
             serial_config = self.config_manager.get_serial_config()
             baud_rate = serial_config.get("baud_rate", 115200)
             timeout = serial_config.get("timeout", 1.0)
             
+            print(f"DEBUG: Attempting connection with baud_rate: {baud_rate}, timeout: {timeout}")
+            
             if self.serial_manager.connect_to_port(port, baud_rate, timeout):
                 self.config_manager.set_serial_port(port)
                 self.error_handler.log_info(f"Connected to {port}")
+                print(f"DEBUG: Successfully connected to {port}")
+            else:
+                print(f"DEBUG: Failed to connect to {port}")
             
         except Exception as e:
+            print(f"DEBUG: Exception in connect_to_port: {e}")
             self.error_handler.log_error("Connection", f"Error connecting to {port}: {e}")
     
     def disconnect_from_port(self):
@@ -571,6 +608,7 @@ class MainWindow(QMainWindow):
     @Slot(list)
     def on_ports_updated(self, ports: list):
         """Handle available ports update"""
+        print(f"DEBUG: Main window received ports_updated signal with: {ports}")
         self.control_plots_tab.update_available_ports(ports)
     
     @Slot(dict)
@@ -682,10 +720,8 @@ class MainWindow(QMainWindow):
             # Stop all timers first
             if hasattr(self, 'data_update_timer'):
                 self.data_update_timer.stop()
-            
-            # Disable port scanning to prevent recursion
-            if hasattr(self, 'serial_manager'):
-                self.serial_manager.disable_scanning()
+            if hasattr(self, 'port_scan_timer'):
+                self.port_scan_timer.stop()
             
             # Cleanup tabs
             if hasattr(self, 'control_plots_tab'):
@@ -710,6 +746,10 @@ class MainWindow(QMainWindow):
             # Disconnect serial
             if hasattr(self, 'serial_manager'):
                 self.serial_manager.disconnect()
+            
+            # Disable port scanning only at the very end to prevent recursion
+            if hasattr(self, 'serial_manager'):
+                self.serial_manager.disable_scanning()
             
             # Force quit application
             QApplication.instance().quit()
