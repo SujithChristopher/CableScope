@@ -24,7 +24,7 @@ class ArduinoCliDownloader(QThread):
     
     def __init__(self):
         super().__init__()
-        self.base_url = "https://downloads.arduino.cc/arduino-cli"
+        self.github_api_url = "https://api.github.com/repos/arduino/arduino-cli/releases/latest"
         self.version = "latest"  # Can be pinned to specific version if needed
         
     def run(self):
@@ -57,7 +57,7 @@ class ArduinoCliDownloader(QThread):
         system = platform.system().lower()
         machine = platform.machine().lower()
         
-        # Map platform names
+        # Map platform names (matching Arduino CLI release naming)
         if system == "windows":
             platform_name = "Windows"
             extension = "zip"
@@ -70,7 +70,7 @@ class ArduinoCliDownloader(QThread):
         else:
             return None
             
-        # Map architectures
+        # Map architectures (matching Arduino CLI naming: 32bit, 64bit, ARM64)
         if machine in ["x86_64", "amd64"]:
             arch = "64bit"
         elif machine in ["i386", "i686", "x86"]:
@@ -78,7 +78,7 @@ class ArduinoCliDownloader(QThread):
         elif machine in ["aarch64", "arm64"]:
             arch = "ARM64"
         elif machine.startswith("arm"):
-            arch = "ARMv7"
+            arch = "32bit"  # Default ARM to 32bit
         else:
             arch = "64bit"  # Default to 64bit
             
@@ -93,29 +93,43 @@ class ArduinoCliDownloader(QThread):
         """Get the download URL for the platform"""
         try:
             # Get latest release info from GitHub API
-            api_url = "https://api.github.com/repos/arduino/arduino-cli/releases/latest"
-            response = requests.get(api_url, timeout=10)
+            response = requests.get(self.github_api_url, timeout=10)
             response.raise_for_status()
             
             release_data = response.json()
+            tag_name = release_data['tag_name']  # e.g., "v1.3.1"
+            version = tag_name.lstrip('v')  # Remove 'v' prefix: "1.3.1"
             
-            # Find matching asset
-            target_name = f"arduino-cli_{release_data['tag_name']}_{platform_info['platform']}_{platform_info['arch']}.{platform_info['extension']}"
+            # Arduino CLI naming pattern: arduino-cli_{version}_{platform}_{arch}.{extension}
+            # Example: arduino-cli_1.3.1_Windows_64bit.zip
+            target_name = f"arduino-cli_{version}_{platform_info['platform']}_{platform_info['arch']}.{platform_info['extension']}"
             
+            self.download_status.emit(f"Looking for {target_name}")
+            
+            # Find exact matching asset
             for asset in release_data['assets']:
                 if asset['name'] == target_name:
+                    self.download_status.emit(f"Found exact match: {asset['name']}")
                     return asset['browser_download_url']
-                    
-            # Fallback: try without version in name
-            fallback_name = f"arduino-cli_{platform_info['platform']}_{platform_info['arch']}.{platform_info['extension']}"
+            
+            # Fallback: search for partial matches (in case naming changes)
+            platform_pattern = f"{platform_info['platform']}_{platform_info['arch']}"
             for asset in release_data['assets']:
-                if fallback_name in asset['name']:
+                if (platform_pattern in asset['name'] and 
+                    asset['name'].endswith(platform_info['extension']) and
+                    'arduino-cli' in asset['name']):
+                    self.download_status.emit(f"Found fallback match: {asset['name']}")
                     return asset['browser_download_url']
                     
+            # Debug: list available assets
+            available_assets = [asset['name'] for asset in release_data['assets'][:10]]  # First 10
+            self.download_status.emit(f"No match found. Available assets: {', '.join(available_assets)}")
             return None
             
         except Exception as e:
-            print(f"Error getting download URL: {e}")
+            error_msg = f"Error getting download URL: {e}"
+            print(error_msg)
+            self.download_status.emit(error_msg)
             return None
     
     def _download_and_install(self, url: str, platform_info: dict) -> Optional[str]:
