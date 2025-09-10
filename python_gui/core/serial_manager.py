@@ -331,9 +331,9 @@ class SerialCommunicationManager(QObject):
                 self.serial_port.reset_input_buffer()
                 return None
             
-            # Read remaining packet data
-            remaining_data = self.serial_port.read(packet_size)
-            if len(remaining_data) != packet_size:
+            # Read remaining packet data (data + checksum)
+            remaining_data = self.serial_port.read(packet_size + 1)  # +1 for checksum
+            if len(remaining_data) != packet_size + 1:
                 return None
             
             # Extract command type
@@ -352,14 +352,14 @@ class SerialCommunicationManager(QObject):
             # Verify checksum (must match firmware calculation)
             # Firmware calculates checksum for packet[2] through packet[11] (bytes 2-11)
             # This corresponds to: packet_size + remaining_data[:-1]
-            received_checksum = remaining_data[9] if len(remaining_data) > 9 else 0
+            received_checksum = remaining_data[9]  # Checksum is at index 9 (10th byte)
             calculated_checksum = 0
             
             # Add packet size byte (packet[2] in firmware)
             calculated_checksum += packet_size
             
             # Add remaining data bytes except the checksum itself (packet[3] through packet[11])
-            for byte in remaining_data[:-1]:  # All except last byte (checksum)
+            for byte in remaining_data[:9]:  # First 9 bytes (command + torque + angle)
                 calculated_checksum += byte
                 
             calculated_checksum = (~calculated_checksum + 1) & 0xFF  # Two's complement
@@ -367,7 +367,7 @@ class SerialCommunicationManager(QObject):
             if received_checksum != calculated_checksum:
                 print(f"DEBUG: Checksum mismatch - received: 0x{received_checksum:02X}, calculated: 0x{calculated_checksum:02X}")
                 print(f"DEBUG: Packet size: 0x{packet_size:02X}")
-                print(f"DEBUG: Data bytes: {' '.join(f'0x{b:02X}' for b in remaining_data[:-1])}")
+                print(f"DEBUG: Data bytes: {' '.join(f'0x{b:02X}' for b in remaining_data[:9])}")
                 self.error_occurred.emit(f"Data packet checksum verification failed (got 0x{received_checksum:02X}, expected 0x{calculated_checksum:02X})")
                 return None
             else:

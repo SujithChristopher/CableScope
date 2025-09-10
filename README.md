@@ -59,8 +59,8 @@ Torque Sensor (HX711):
 - GND  → GND
 
 Encoder:
-- Phase A → Pin 3
-- Phase B → Pin 2
+- Phase A → Pin 27
+- Phase B → Pin 28
 - VCC    → 3.3V
 - GND    → GND
 
@@ -130,8 +130,8 @@ For Teensy boards, install Teensyduino:
 5. Click **"Upload Firmware"**
 
 #### Connect to Device
-1. Go to the **Control** tab
-2. Select the COM port from the dropdown
+1. Go to the **Control+Plots** tab (unified interface)
+2. Select the COM port from the dropdown (Teensy ports auto-selected by default)
 3. Click **"Connect"**
 4. Verify connection status shows "Connected"
 
@@ -153,8 +153,7 @@ For Teensy boards, install Teensyduino:
 #### Start/Stop Data Collection
 1. Ensure device is connected
 2. Click **"Start Data Acquisition"**
-3. Monitor real-time data in the **Control** tab
-4. View live plots in the **Real-time Plots** tab
+3. Monitor real-time data and live plots in the unified **Control+Plots** tab
 
 #### Configure Sampling
 - **Sampling Rate**: 1-1000 Hz (default: 10 Hz)
@@ -179,13 +178,14 @@ For Teensy boards, install Teensyduino:
 ### 5. Data Recording
 
 #### Start Recording
-1. Go to **Real-time Plots** tab
+1. In the **Control+Plots** tab
 2. Click **"Start Recording"**
 3. Choose save location and filename
 4. Recording begins immediately
 
 #### Recording Features
-- **CSV Format**: Timestamp, Time(s), Torque(Nm), Angle(deg)
+- **Enhanced CSV Format**: Timestamp, Time(s), Desired Torque(Nm), Actual Torque(Nm), Angle(deg)
+- **Command Tracking**: Records both commanded and measured torque values
 - **Auto-timestamping**: Automatic filename generation
 - **Real-time Status**: Recording indicator and file info
 - **Safe Stopping**: Properly closes files on stop
@@ -218,15 +218,19 @@ Response: [0xFF][0xFF][0xAA] (ACK)
 ```
 Data Format: [0xFF][0xFF][SIZE][CMD][DATA...][CHECKSUM]
 
-Data Packet:
+Data Packet (13 bytes total):
 [0xFF][0xFF][0x09][0x02][torque_4_bytes][angle_4_bytes][checksum]
+- Sent every 100ms automatically
+- Two's complement checksum verification
+- Immediate motor response to torque commands
 ```
 
 ### Error Handling
-- **Checksums**: Verify data integrity
+- **Checksums**: Two's complement verification for data integrity
 - **Timeouts**: Handle communication failures
 - **Retries**: Automatic retry on errors
 - **Status Monitoring**: Connection and data rate tracking
+- **Auto-detection**: Automatic Teensy port selection via USB VID:PID
 
 ## Configuration Files
 

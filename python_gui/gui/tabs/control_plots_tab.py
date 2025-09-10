@@ -61,6 +61,7 @@ class ControlPlotsTab(QWidget):
         self.recording_file = None
         self.recording_writer = None
         self.recording_start_time = None
+        self.current_desired_torque = 0.0  # Track desired torque for CSV recording
         
         # Plot styling
         self.plot_colors = {
@@ -544,6 +545,7 @@ class ControlPlotsTab(QWidget):
     def on_send_torque_clicked(self):
         """Handle send torque button click"""
         torque_value = self.torque_spinbox.value()
+        self.current_desired_torque = torque_value  # Update desired torque for CSV
         self.command_status_label.setText("Sending...")
         self.command_status_label.setStyleSheet("color: orange; font-weight: bold;")
         self.torque_command_requested.emit(torque_value)
@@ -588,6 +590,7 @@ class ControlPlotsTab(QWidget):
     @Slot()
     def on_zero_torque_clicked(self):
         """Handle zero torque button click"""
+        self.current_desired_torque = 0.0  # Update desired torque for CSV
         self.set_torque_value(0.0)
         self.torque_command_requested.emit(0.0)
     
@@ -702,7 +705,7 @@ class ControlPlotsTab(QWidget):
                 self.recording_writer = csv.writer(self.recording_file)
                 
                 # Write header
-                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Torque (Nm)', 'Angle (deg)'])
+                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Desired Torque (Nm)', 'Actual Torque (Nm)', 'Angle (deg)'])
                 
                 self.is_recording = True
                 self.recording_start_time = time.time()
@@ -760,6 +763,7 @@ class ControlPlotsTab(QWidget):
             self.recording_writer.writerow([
                 datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
                 f"{relative_time:.3f}",
+                f"{self.current_desired_torque:.6f}",
                 f"{torque:.6f}",
                 f"{angle:.3f}"
             ])
@@ -896,6 +900,7 @@ class ControlPlotsTab(QWidget):
     
     def emergency_stop(self):
         """Emergency stop - reset torque to zero"""
+        self.current_desired_torque = 0.0  # Update desired torque for CSV
         self.set_torque_value(0.0)
         self.last_command_label.setText("EMERGENCY STOP - 0.000 Nm")
     

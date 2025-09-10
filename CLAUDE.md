@@ -26,7 +26,8 @@ CableScope is a **dual-component system** combining Arduino/Teensy firmware with
 - **`core/serial_manager.py`**: Handles bidirectional communication protocol with firmware
 - **`core/config_manager.py`**: TOML-based configuration management with user settings
 - **`gui/main_window.py`**: Main application window with tabbed interface
-- **`gui/tabs/`**: Individual application tabs (Control, Plots, Settings, Firmware)
+- **`gui/tabs/control_plots_tab.py`**: Unified control and plotting interface (merged from separate Control and Real-time Plots tabs)
+- **`gui/tabs/`**: Individual application tabs (Control+Plots, Settings, Firmware)
 - **`gui/widgets/`**: Custom widgets for motor control and data visualization
 
 ### Communication Protocol
@@ -35,15 +36,18 @@ The system uses a custom binary protocol over serial:
 Commands: [0xFF][0xFF][CMD][DATA...]
 Data: [0xFF][0xFF][SIZE][CMD][DATA...][CHECKSUM]
 ```
-- **Torque commands**: Set motor torque via CMD_SET_TORQUE (0x01)
-- **Data streaming**: Real-time torque/angle data via CMD_GET_DATA (0x02)
-- **Error handling**: Checksums, timeouts, and retry mechanisms
+- **Torque commands**: Set motor torque via CMD_SET_TORQUE (0x01) with immediate PWM application
+- **Data streaming**: Real-time torque/angle data via CMD_GET_DATA (0x02) at 100ms intervals
+- **Packet structure**: 13-byte data packets (headers + size + command + torque + angle + checksum)
+- **Error handling**: Two's complement checksums, timeouts, and retry mechanisms
+- **Auto-detection**: Automatic Teensy port identification via USB VID:PID (16C0:0483)
 
 ### Hardware Interface
-- **Torque sensor**: HX711-based load cell amplifier
-- **Encoder**: Quadrature rotary encoder for angle measurement  
-- **Motor control**: PWM-based motor driver with enable/direction control
+- **Torque sensor**: HX711-based load cell amplifier (pins 32/33)
+- **Encoder**: Quadrature rotary encoder for angle measurement (pins 27/28)
+- **Motor control**: PWM-based motor driver with enable/direction control (pins 8/9/10)
 - **Microcontroller**: Teensy 4.1 (recommended) or Arduino variants
+- **Motor response**: Immediate PWM application upon torque command receipt
 
 ## Configuration Management
 
@@ -97,6 +101,12 @@ update_rate = 50
 - **Emergency stop**: Immediate motor shutdown capability
 - **Input validation**: All user inputs validated and bounded
 - **Error recovery**: Graceful handling of communication failures
+
+### Data Recording
+- **CSV format**: Enhanced with both desired and actual torque columns
+- **Column structure**: Timestamp, Time(s), Desired Torque(Nm), Actual Torque(Nm), Angle(deg)
+- **Real-time tracking**: Desired torque values tracked throughout operation
+- **Command correlation**: Links torque commands to sensor measurements
 
 ## Testing and Validation
 

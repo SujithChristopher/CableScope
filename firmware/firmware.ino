@@ -15,8 +15,8 @@
 #define torqueSensor_DOUT_PIN 32
 #define torqueSensor_SCK_PIN 33
 
-#define ENC1A 3  //27// 23//6//28//2//2//27//3//6//2//5//26
-#define ENC1B 2  //2//28// 22//27//3//3//28//2//7//3//4//25
+#define ENC1A 27  //27// 23//6//28//2//2//27//3//6//2//5//26
+#define ENC1B 28  //2//28// 22//27//3//3//28//2//7//3//4//25
 
 #define ENC1MAXCOUNT 4 * 4096 * 53       //4*43*4096//4*2500//4 * 90500//4*43*2048//
 #define ENC1COUNT2DEG 0.25f * 0.001658f  //0.25f*0.002044f//0.25f*0.002044f//0.25f * 0.0039779f//0.25f*0.0040879f//
@@ -122,6 +122,13 @@ void handleSerialCommands() {
           
           desiredTorque = torqueData.f;
           
+          // Convert torque to motor current and apply to motor
+          // Assuming direct torque-to-current mapping (you may need to adjust this)
+          motor_current = desiredTorque; // Simple 1:1 mapping, adjust as needed
+          
+          // Apply motor control immediately
+          applyMotorControl();
+          
           // Send acknowledgment
           Serial.write(HEADER1);
           Serial.write(HEADER2);
@@ -132,8 +139,8 @@ void handleSerialCommands() {
   }
 }
 
-// Control motor based on desired torque
-void controlMotor() {
+// Apply motor control immediately when torque command is received
+void applyMotorControl() {
   motor_current = desiredTorque / 3.35;  // Calculate motor current
   
   // Limit current to safe range
@@ -156,10 +163,15 @@ void controlMotor() {
   }
 }
 
+// Control motor based on desired torque
+void controlMotor() {
+  applyMotorControl();  // Use the same logic as immediate control
+}
+
 // Send data packet to Python
 void sendDataPacket() {
-  // Create data packet: Header(2) + Size(1) + Data(8) + Checksum(1)
-  uint8_t packet[12];
+  // Create data packet: Header(2) + Size(1) + Data(9) + Checksum(1)
+  uint8_t packet[13];
   
   packet[0] = HEADER1;
   packet[1] = HEADER2;
@@ -196,8 +208,8 @@ void sendDataPacket() {
   checksum = (~checksum) + 1; // Two's complement
   
   // Add checksum
-  packet[11] = checksum;
+  packet[12] = checksum;
   
   // Send packet
-  Serial.write(packet, 12);
+  Serial.write(packet, 13);
 }
