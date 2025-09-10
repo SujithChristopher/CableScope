@@ -7,7 +7,18 @@
       "Bash(call conda activate py13)",
       "Bash(where conda)",
       "Bash(C:UsersPintuminiconda3condabinconda.bat activate py13)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git tag:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(pip install:*)",
+      "Bash(conda init:*)",
+      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -c \"import sys; print(''Python:'', sys.version)\")",
+      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -m pip install -r python_gui/requirements.txt)",
+      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -m pip install pyinstaller)",
+      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -c \"import PySide6; import pyqtgraph; import serial; print(''All imports OK'')\")",
+      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -m PyInstaller cablescope.spec --clean --noconfirm)"
     ],
     "deny": [],
     "ask": []
