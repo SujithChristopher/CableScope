@@ -29,13 +29,13 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         architecture: ${{ matrix.python_arch }}
         
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('python_gui/requirements.txt') }}
@@ -107,7 +107,7 @@ jobs:
         
     # Upload artifacts for debugging
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.output_name }}
         path: |
@@ -132,4 +132,43 @@ jobs:
       run: |
         echo "ASSET_NAME=CableScope-macOS-x64.zip" >> $GITHUB_ENV
         echo "ASSET_PATH=CableScope-macOS-x64.zip" >> $GITHUB_ENV
+
+  # Create release if triggered by tag
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: CableScope ${{ github.ref_name }}
+        body: |
+          ## CableScope Motor Control System ${{ github.ref_name }}
+          
+          ### 🚀 What's New
+          - Complete motor control system with real-time plotting
+          - Arduino CLI auto-download functionality (no manual setup required!)
+          - Enhanced CSV recording with desired vs actual torque tracking
+          - Unified control and plotting interface
+          - Teensy 4.1 support with optimized communication protocol
+          
+          ### 📦 Installation
+          1. Download the package for your platform
+          2. Extract and run the executable
+          3. Arduino CLI will be downloaded automatically on first use
+          
+          ### 🔧 Hardware Requirements
+          - Teensy 4.1 (recommended) or Arduino variants
+          - HX711 torque sensor (pins 32/33)
+          - Quadrature encoder (pins 27/28)
+          - Motor driver with PWM control (pins 8/9/10)
+          
+          ### 📖 Documentation
+          See README.md for complete setup instructions.
+        files: |
+          CableScope-*.zip
+          CableScope-*.tar.gz
+        draft: false
+        prerelease: false
         
