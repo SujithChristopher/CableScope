@@ -18,7 +18,13 @@
       "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -m pip install -r python_gui/requirements.txt)",
       "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -m pip install pyinstaller)",
       "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -c \"import PySide6; import pyqtgraph; import serial; print(''All imports OK'')\")",
-      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -m PyInstaller cablescope.spec --clean --noconfirm)"
+      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" -m PyInstaller cablescope.spec --clean --noconfirm)",
+      "WebSearch",
+      "Bash(\"C:\\Users\\Pintu\\miniconda3\\envs\\py13\\python.exe\" test_arduino_cli.py)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(timeout 60 bash -c 'while true; do gh run list --limit 1 | grep -q \"\"in_progress\"\" && sleep 5 || break; done; gh run list --limit 1')"
     ],
     "deny": [],
     "ask": []

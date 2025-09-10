@@ -6,6 +6,9 @@ on:
       - 'v*'  # Trigger on version tags like v1.0.0
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: write  # Required for creating releases
+  
 jobs:
   build:
     name: Build on ${{ matrix.os }}
@@ -149,6 +152,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: CableScope-Windows-x64
+        path: .
+        
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
