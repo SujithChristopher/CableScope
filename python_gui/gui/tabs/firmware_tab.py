@@ -15,6 +15,9 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+# Import Arduino CLI manager
+from core.arduino_cli_manager import ArduinoCliManager
+
 
 class FirmwareUploadWorker(QThread):
     """Worker thread for firmware upload"""
@@ -98,7 +101,7 @@ class FirmwareTab(QWidget):
         super().__init__()
         
         # Configuration
-        self.arduino_cli_path = "arduino-cli.exe"
+        self.arduino_cli_path = ""  # Will be set by manager
         self.firmware_path = ""
         self.selected_port = ""
         self.board_type = "teensy:avr:teensy41"
@@ -107,8 +110,16 @@ class FirmwareTab(QWidget):
         self.upload_worker = None
         self.is_uploading = False
         
+        # Arduino CLI manager
+        self.cli_manager = ArduinoCliManager()
+        self.cli_manager.installation_complete.connect(self.on_cli_installation_complete)
+        self.cli_manager.installation_failed.connect(self.on_cli_installation_failed)
+        
         self.setup_ui()
         self.setup_connections()
+        
+        # Check for Arduino CLI after UI setup
+        self.check_arduino_cli()
     
     def setup_ui(self):
         """Setup the user interface"""
@@ -153,16 +164,26 @@ class FirmwareTab(QWidget):
         self.browse_cli_button.clicked.connect(self.browse_arduino_cli)
         layout.addWidget(self.browse_cli_button, 0, 2)
         
+        # Download button
+        self.download_cli_button = QPushButton("Download CLI")
+        self.download_cli_button.clicked.connect(self.download_arduino_cli)
+        layout.addWidget(self.download_cli_button, 0, 3)
+        
         # Test CLI button
         self.test_cli_button = QPushButton("Test CLI")
         self.test_cli_button.clicked.connect(self.test_arduino_cli)
-        layout.addWidget(self.test_cli_button, 0, 3)
+        layout.addWidget(self.test_cli_button, 0, 4)
         
         # CLI status
         layout.addWidget(QLabel("Status:"), 1, 0)
-        self.cli_status_label = QLabel("Not tested")
-        self.cli_status_label.setStyleSheet("color: gray;")
-        layout.addWidget(self.cli_status_label, 1, 1, 1, 3)
+        self.cli_status_label = QLabel("Checking...")
+        self.cli_status_label.setStyleSheet("color: orange;")
+        layout.addWidget(self.cli_status_label, 1, 1, 1, 4)
+        
+        # Download progress bar
+        self.cli_download_progress = QProgressBar()
+        self.cli_download_progress.setVisible(False)
+        layout.addWidget(self.cli_download_progress, 2, 0, 1, 5)
         
         return group
     
@@ -441,6 +462,7 @@ class FirmwareTab(QWidget):
                 self.cli_status_label.setText("Arduino CLI OK")
                 self.cli_status_label.setStyleSheet("color: green; font-weight: bold;")
                 self.add_log_message(f"Arduino CLI test successful: {result.stdout.strip()}")
+                self.download_cli_button.setStyleSheet("")  # Remove any highlighting
             else:
                 self.cli_status_label.setText("Arduino CLI Error")
                 self.cli_status_label.setStyleSheet("color: red; font-weight: bold;")
@@ -454,6 +476,9 @@ class FirmwareTab(QWidget):
             self.cli_status_label.setText("Test Failed")
             self.cli_status_label.setStyleSheet("color: red; font-weight: bold;")
             self.add_log_message(f"Arduino CLI test error: {e}")
+        
+        # Update UI state based on test results
+        self.update_cli_ui_state()
     
     @Slot()
     def start_upload(self):
@@ -543,3 +568,90 @@ class FirmwareTab(QWidget):
         """Clear the upload log"""
         self.log_text.clear()
         self.add_log_message("Log cleared")
+    
+    # Arduino CLI Management Methods
+    def check_arduino_cli(self):
+        """Check for Arduino CLI installation"""
+        cli_path = self.cli_manager.get_arduino_cli_path()
+        
+        if cli_path:
+            # Arduino CLI found
+            self.arduino_cli_path = cli_path
+            self.cli_path_edit.setText(cli_path)
+            self.test_arduino_cli()
+        else:
+            # Arduino CLI not found
+            self.cli_status_label.setText("Arduino CLI not found - Click 'Download CLI' to install")
+            self.cli_status_label.setStyleSheet("color: red;")
+            self.download_cli_button.setStyleSheet("background-color: #4CAF50; font-weight: bold;")
+    
+    @Slot()
+    def download_arduino_cli(self):
+        """Download and install Arduino CLI"""
+        self.download_cli_button.setEnabled(False)
+        self.download_cli_button.setText("Downloading...")
+        self.cli_download_progress.setVisible(True)
+        self.cli_download_progress.setRange(0, 100)
+        self.cli_status_label.setText("Downloading Arduino CLI...")
+        self.cli_status_label.setStyleSheet("color: orange;")
+        
+        # Connect downloader signals
+        if hasattr(self.cli_manager, 'downloader') and self.cli_manager.downloader:
+            self.cli_manager.downloader.download_progress.connect(self.on_cli_download_progress)
+            self.cli_manager.downloader.download_status.connect(self.on_cli_download_status)
+        
+        # Start download
+        self.cli_manager.install_arduino_cli()
+    
+    @Slot(int)
+    def on_cli_download_progress(self, progress: int):
+        """Handle CLI download progress"""
+        self.cli_download_progress.setValue(progress)
+    
+    @Slot(str)
+    def on_cli_download_status(self, status: str):
+        """Handle CLI download status"""
+        self.cli_status_label.setText(status)
+    
+    @Slot(str)
+    def on_cli_installation_complete(self, cli_path: str):
+        """Handle successful CLI installation"""
+        self.arduino_cli_path = cli_path
+        self.cli_path_edit.setText(cli_path)
+        
+        self.download_cli_button.setEnabled(True)
+        self.download_cli_button.setText("Download CLI")
+        self.download_cli_button.setStyleSheet("")
+        self.cli_download_progress.setVisible(False)
+        
+        self.cli_status_label.setText(f"Arduino CLI downloaded successfully!")
+        self.cli_status_label.setStyleSheet("color: green; font-weight: bold;")
+        
+        # Test the newly installed CLI
+        QTimer.singleShot(1000, self.test_arduino_cli)
+    
+    @Slot(str)
+    def on_cli_installation_failed(self, error_message: str):
+        """Handle failed CLI installation"""
+        self.download_cli_button.setEnabled(True)
+        self.download_cli_button.setText("Download CLI")
+        self.download_cli_button.setStyleSheet("background-color: #f44336; font-weight: bold;")
+        self.cli_download_progress.setVisible(False)
+        
+        self.cli_status_label.setText(f"Download failed: {error_message}")
+        self.cli_status_label.setStyleSheet("color: red; font-weight: bold;")
+        
+        QMessageBox.critical(self, "Download Failed", 
+                           f"Failed to download Arduino CLI:\n{error_message}\n\n"
+                           "You can try again or manually install Arduino CLI.")
+    
+    def update_cli_ui_state(self):
+        """Update CLI-related UI elements based on current state"""
+        has_cli = bool(self.arduino_cli_path and Path(self.arduino_cli_path).exists())
+        
+        # Enable/disable upload functionality based on CLI availability
+        self.upload_button.setEnabled(has_cli and not self.is_uploading)
+        
+        if not has_cli:
+            self.upload_status_label.setText("Arduino CLI required for upload")
+            self.upload_status_label.setStyleSheet("color: orange;")

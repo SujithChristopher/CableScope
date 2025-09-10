@@ -3,3 +3,4 @@ pyqtgraph>=0.13.0
 pyserial>=3.5
 numpy>=1.21.0
 toml>=0.10.2
+requests>=2.25.0

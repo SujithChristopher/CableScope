@@ -1,0 +1,186 @@
+name: Build and Release CableScope
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0
+  release:
+    types: [created]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            output_name: CableScope-Windows-x64
+            python_arch: x64
+          - os: ubuntu-latest
+            output_name: CableScope-Linux-x64
+            python_arch: x64
+          - os: macos-latest
+            output_name: CableScope-macOS-x64
+            python_arch: x64
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        architecture: ${{ matrix.python_arch }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('python_gui/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r python_gui/requirements.txt
+        pip install pyinstaller
+        
+    - name: Install platform-specific dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
+        
+    - name: Build with PyInstaller (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd python_gui
+        pyinstaller cablescope.spec --clean --noconfirm
+        # Create zip archive
+        Compress-Archive -Path dist/CableScope -DestinationPath ../CableScope-Windows-x64.zip
+      shell: pwsh
+      
+    - name: Build with PyInstaller (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        cd python_gui
+        pyinstaller cablescope.spec --clean --noconfirm
+        # Create tar.gz archive
+        tar -czvf ../CableScope-Linux-x64.tar.gz -C dist CableScope
+        
+    - name: Build with PyInstaller (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        cd python_gui
+        pyinstaller cablescope.spec --clean --noconfirm
+        # Create zip archive for macOS
+        cd dist && zip -r ../../CableScope-macOS-x64.zip CableScope.app
+        
+    - name: Verify build output
+      run: |
+        ls -la
+        
+    # Upload artifacts for debugging
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.output_name }}
+        path: |
+          CableScope-*.zip
+          CableScope-*.tar.gz
+          
+    # Create release assets
+    - name: Prepare release asset (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        echo "ASSET_NAME=CableScope-Windows-x64.zip" >> $env:GITHUB_ENV
+        echo "ASSET_PATH=CableScope-Windows-x64.zip" >> $env:GITHUB_ENV
+        
+    - name: Prepare release asset (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        echo "ASSET_NAME=CableScope-Linux-x64.tar.gz" >> $GITHUB_ENV
+        echo "ASSET_PATH=CableScope-Linux-x64.tar.gz" >> $GITHUB_ENV
+        
+    - name: Prepare release asset (macOS)  
+      if: runner.os == 'macOS'
+      run: |
+        echo "ASSET_NAME=CableScope-macOS-x64.zip" >> $GITHUB_ENV
+        echo "ASSET_PATH=CableScope-macOS-x64.zip" >> $GITHUB_ENV
+        
+    - name: Upload to Release
+      if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url || format('https://uploads.github.com/repos/{0}/releases/{1}/assets', github.repository, github.event.release.id) }}
+        asset_path: ${{ env.ASSET_PATH }}
+        asset_name: ${{ env.ASSET_NAME }}
+        asset_content_type: application/octet-stream
+
+  # Create release if triggered by tag
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/') && !github.event.release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: CableScope ${{ github.ref_name }}
+        body: |
+          ## CableScope Motor Control System ${{ github.ref_name }}
+          
+          ### 🚀 What's New
+          - Complete motor control system with real-time plotting
+          - Arduino CLI auto-download functionality  
+          - Enhanced CSV recording with desired vs actual torque
+          - Unified control and plotting interface
+          - Teensy 4.1 support with optimized communication protocol
+          
+          ### 📦 Downloads
+          - **Windows**: CableScope-Windows-x64.zip
+          - **Linux**: CableScope-Linux-x64.tar.gz  
+          - **macOS**: CableScope-macOS-x64.zip
+          
+          ### 🔧 Installation
+          1. Download the appropriate package for your platform
+          2. Extract the archive  
+          3. Run the CableScope executable
+          4. The application will automatically download Arduino CLI if needed
+          
+          ### 📖 Documentation
+          - See README.md for setup instructions
+          - Hardware wiring diagrams included
+          - Configuration examples provided
+          
+          ### 🐛 Bug Reports
+          Please report issues on the GitHub Issues page.
+          
+          ### 🙏 Support
+          This is an open-source project. Contributions welcome!
+        draft: false
+        prerelease: false
+
+  # Notification job
+  notify:
+    needs: [build, create-release]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Build Status
+      run: |
+        if [ "${{ needs.build.result }}" == "success" ]; then
+          echo "✅ Build completed successfully for all platforms"
+        else
+          echo "❌ Build failed on one or more platforms"
+        fi
