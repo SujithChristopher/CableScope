@@ -240,11 +240,19 @@ class SettingsTab(QWidget):
             self.configuration_changed.emit(config)
             self.configuration_saved.emit()
             
-            QMessageBox.information(self, "Settings Saved", 
-                                  "Configuration has been saved successfully.")
+            try:
+                QMessageBox.information(self, "Settings Saved", 
+                                      "Configuration has been saved successfully.")
+            except:
+                print("Configuration has been saved successfully.")
             
+        except RecursionError:
+            print("RecursionError in save_configuration - skipping message box")
         except Exception as e:
-            QMessageBox.critical(self, "Save Error", f"Failed to save configuration: {e}")
+            try:
+                QMessageBox.critical(self, "Save Error", f"Failed to save configuration: {e}")
+            except:
+                print(f"Failed to save configuration: {e}")
     
     @Slot()
     def import_configuration(self):

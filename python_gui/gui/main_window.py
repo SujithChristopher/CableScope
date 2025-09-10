@@ -19,8 +19,7 @@ from core.serial_manager import SerialCommunicationManager
 from core.error_handler import ErrorHandler
 
 # GUI imports
-from gui.tabs.control_tab import ControlTab
-from gui.tabs.plotting_tab import PlottingTab
+from gui.tabs.control_plots_tab import ControlPlotsTab
 from gui.tabs.settings_tab import SettingsTab
 from gui.tabs.firmware_tab import FirmwareTab
 from gui.widgets.status_bar import EnhancedStatusBar
@@ -78,14 +77,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Create tabs
-        self.control_tab = ControlTab()
-        self.plotting_tab = PlottingTab()
+        self.control_plots_tab = ControlPlotsTab()
         self.settings_tab = SettingsTab()
         self.firmware_tab = FirmwareTab()
         
         # Add tabs
-        self.tab_widget.addTab(self.control_tab, "Control")
-        self.tab_widget.addTab(self.plotting_tab, "Real-time Plots")
+        self.tab_widget.addTab(self.control_plots_tab, "Control & Plots")
         self.tab_widget.addTab(self.settings_tab, "Settings")
         self.tab_widget.addTab(self.firmware_tab, "Firmware")
         
@@ -209,18 +206,16 @@ class MainWindow(QMainWindow):
         self.error_handler.error_occurred.connect(self.on_error_occurred)
         self.error_handler.warning_occurred.connect(self.on_warning_occurred)
         
-        # Control tab connections
-        self.control_tab.torque_command_requested.connect(self.send_torque_command)
-        self.control_tab.connection_requested.connect(self.connect_to_port)
-        self.control_tab.disconnection_requested.connect(self.disconnect_from_port)
-        self.control_tab.data_acquisition_start_requested.connect(self.start_data_acquisition)
-        self.control_tab.data_acquisition_stop_requested.connect(self.stop_data_acquisition)
-        self.control_tab.emergency_stop_requested.connect(self.emergency_stop)
-        
-        # Plotting tab connections
-        self.plotting_tab.plot_settings_changed.connect(self.on_plot_settings_changed)
-        self.plotting_tab.recording_start_requested.connect(self.start_recording)
-        self.plotting_tab.recording_stop_requested.connect(self.stop_recording)
+        # Control & Plots tab connections
+        self.control_plots_tab.torque_command_requested.connect(self.send_torque_command)
+        self.control_plots_tab.connection_requested.connect(self.connect_to_port)
+        self.control_plots_tab.disconnection_requested.connect(self.disconnect_from_port)
+        self.control_plots_tab.data_acquisition_start_requested.connect(self.start_data_acquisition)
+        self.control_plots_tab.data_acquisition_stop_requested.connect(self.stop_data_acquisition)
+        self.control_plots_tab.emergency_stop_requested.connect(self.emergency_stop)
+        self.control_plots_tab.plot_settings_changed.connect(self.on_plot_settings_changed)
+        self.control_plots_tab.recording_start_requested.connect(self.start_recording)
+        self.control_plots_tab.recording_stop_requested.connect(self.stop_recording)
         
         # Settings tab connections  
         self.settings_tab.configuration_changed.connect(self.on_configuration_changed)
@@ -246,8 +241,7 @@ class MainWindow(QMainWindow):
             self.buffer_size = data_config.get("buffer_size", 1000)
             
             # Pass configuration to tabs
-            self.control_tab.load_configuration(config)
-            self.plotting_tab.load_configuration(config)
+            self.control_plots_tab.load_configuration(config)
             self.settings_tab.load_configuration(config)
             self.firmware_tab.load_configuration(config)
             
@@ -292,7 +286,7 @@ class MainWindow(QMainWindow):
                 # Update UI
                 self.start_action.setEnabled(False)
                 self.stop_action.setEnabled(True)
-                self.control_tab.set_data_acquisition_active(True)
+                self.control_plots_tab.set_data_acquisition_active(True)
                 
                 # Update status
                 self.enhanced_status_bar.set_data_acquisition_status(True)
@@ -316,14 +310,38 @@ class MainWindow(QMainWindow):
             # Update UI
             self.start_action.setEnabled(True)
             self.stop_action.setEnabled(False)
-            self.control_tab.set_data_acquisition_active(False)
+            self.control_plots_tab.set_data_acquisition_active(False)
             
             # Stop recording if active
-            self.plotting_tab.stop_recording()
+            self.control_plots_tab.stop_recording()
             
             # Update status
             self.enhanced_status_bar.set_data_acquisition_status(False)
             self.enhanced_status_bar.show_message("Data acquisition stopped", 3000)
+            
+            self.error_handler.log_info("Data acquisition stopped")
+            
+        except Exception as e:
+            self.error_handler.log_error("DataAcquisition", f"Error stopping data acquisition: {e}")
+    
+    def stop_data_acquisition_silent(self):
+        """Stop data acquisition without showing status messages"""
+        if not self.is_data_acquisition_active:
+            return
+        
+        try:
+            self.is_data_acquisition_active = False
+            
+            # Update UI
+            self.start_action.setEnabled(True)
+            self.stop_action.setEnabled(False)
+            self.control_plots_tab.set_data_acquisition_active(False)
+            
+            # Stop recording if active
+            self.control_plots_tab.stop_recording()
+            
+            # Update status (without messages)
+            self.enhanced_status_bar.set_data_acquisition_status(False)
             
             self.error_handler.log_info("Data acquisition stopped")
             
@@ -340,7 +358,7 @@ class MainWindow(QMainWindow):
             self.stop_data_acquisition()
             
             # Update control tab
-            self.control_tab.emergency_stop()
+            self.control_plots_tab.emergency_stop()
             
             # Show message
             QMessageBox.information(self, "Emergency Stop", 
@@ -418,7 +436,7 @@ class MainWindow(QMainWindow):
         """Update all displays with current data"""
         if self.current_data:
             # Update control tab
-            self.control_tab.update_current_values(self.current_data)
+            self.control_plots_tab.update_current_values(self.current_data)
             
             # Update status bar
             self.enhanced_status_bar.update_current_values(self.current_data)
@@ -426,12 +444,12 @@ class MainWindow(QMainWindow):
     def clear_data_buffer(self):
         """Clear the data buffer"""
         self.data_buffer = {"torque": [], "angle": [], "time": []}
-        self.plotting_tab.clear_all_data()
+        self.control_plots_tab.clear_all_data()
         self.enhanced_status_bar.show_message("Data buffer cleared", 2000)
     
     def reset_plots(self):
         """Reset all plot zoom and ranges"""
-        self.plotting_tab.reset_all_plots()
+        self.control_plots_tab.reset_all_plots()
         self.enhanced_status_bar.show_message("Plot ranges reset", 2000)
     
     # Recording methods
@@ -467,6 +485,24 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.error_handler.log_error("Configuration", f"Error saving configuration: {e}")
     
+    def save_configuration_silent(self):
+        """Save current configuration without showing status messages"""
+        try:
+            # Get current window size  
+            size = self.size()
+            self.config_manager.set_window_size(size.width(), size.height())
+            
+            # Save configuration directly without going through settings tab to avoid recursion
+            self.config_manager.save_config()
+            
+        except RecursionError:
+            print("RecursionError in save_configuration_silent - skipping save")
+        except Exception as e:
+            try:
+                self.error_handler.log_error("Configuration", f"Error saving configuration: {e}")
+            except:
+                print(f"Error saving configuration: {e}")
+    
     def import_configuration(self):
         """Import configuration from file"""
         self.settings_tab.import_configuration()
@@ -490,7 +526,7 @@ class MainWindow(QMainWindow):
             self.clear_data_buffer()
             
             # Reset controls
-            self.control_tab.reset_controls()
+            self.control_plots_tab.reset_controls()
             
             self.enhanced_status_bar.show_message("New session started", 3000)
     
@@ -523,7 +559,7 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def on_connection_changed(self, connected: bool):
         """Handle connection status change"""
-        self.control_tab.set_connection_status(connected)
+        self.control_plots_tab.set_connection_status(connected)
         self.enhanced_status_bar.set_connection_status(
             connected, 
             self.serial_manager.current_port if connected else ""
@@ -535,7 +571,7 @@ class MainWindow(QMainWindow):
     @Slot(list)
     def on_ports_updated(self, ports: list):
         """Handle available ports update"""
-        self.control_tab.update_available_ports(ports)
+        self.control_plots_tab.update_available_ports(ports)
     
     @Slot(dict)
     def on_data_received(self, data: dict):
@@ -559,7 +595,7 @@ class MainWindow(QMainWindow):
                 self.data_buffer["time"] = self.data_buffer["time"][-self.buffer_size:]
             
             # Update plotting tab
-            self.plotting_tab.update_data(self.data_buffer)
+            self.control_plots_tab.update_data(self.data_buffer)
             
             # Update status bar
             self.enhanced_status_bar.increment_data_count()
@@ -570,7 +606,14 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def on_serial_error(self, error_msg: str):
         """Handle serial communication error"""
-        self.enhanced_status_bar.show_message(f"Serial Error: {error_msg}", 5000)
+        try:
+            self.enhanced_status_bar.show_message(f"Serial Error: {error_msg}", 5000)
+        except RecursionError:
+            # Prevent recursion in error handling
+            print(f"Serial Error (recursion prevented): {error_msg}")
+        except Exception:
+            # Catch any other exceptions to prevent cascading errors
+            print(f"Serial Error (exception in handler): {error_msg}")
     
     @Slot()
     def on_command_acknowledged(self):
@@ -580,12 +623,26 @@ class MainWindow(QMainWindow):
     @Slot(str, str)
     def on_error_occurred(self, error_type: str, message: str):
         """Handle error from error handler"""
-        self.enhanced_status_bar.show_message(f"Error: {message}", 5000)
+        try:
+            self.enhanced_status_bar.show_message(f"Error: {message}", 5000)
+        except RecursionError:
+            # Prevent recursion in error handling
+            print(f"Error (recursion prevented): {error_type}: {message}")
+        except Exception:
+            # Catch any other exceptions to prevent cascading errors
+            print(f"Error (exception in handler): {error_type}: {message}")
     
     @Slot(str)
     def on_warning_occurred(self, message: str):
         """Handle warning from error handler"""
-        self.enhanced_status_bar.show_message(f"Warning: {message}", 3000)
+        try:
+            self.enhanced_status_bar.show_message(f"Warning: {message}", 3000)
+        except RecursionError:
+            # Prevent recursion in error handling
+            print(f"Warning (recursion prevented): {message}")
+        except Exception:
+            # Catch any other exceptions to prevent cascading errors
+            print(f"Warning (exception in handler): {message}")
     
     @Slot(dict)
     def on_configuration_changed(self, config: dict):
@@ -622,25 +679,50 @@ class MainWindow(QMainWindow):
             # Emit closing signal
             self.window_closing.emit()
             
+            # Stop all timers first
+            if hasattr(self, 'data_update_timer'):
+                self.data_update_timer.stop()
+            
+            # Disable port scanning to prevent recursion
+            if hasattr(self, 'serial_manager'):
+                self.serial_manager.disable_scanning()
+            
+            # Cleanup tabs
+            if hasattr(self, 'control_plots_tab'):
+                self.control_plots_tab.cleanup()
+            
             # Stop data acquisition
             if self.is_data_acquisition_active:
-                self.stop_data_acquisition()
+                self.stop_data_acquisition_silent()
             
             # Send zero torque command before closing
-            if self.serial_manager.is_connected:
-                self.serial_manager.send_torque_command(0.0)
-                import time
-                time.sleep(0.1)  # Allow time for command to be sent
+            if hasattr(self, 'serial_manager') and self.serial_manager.is_connected:
+                try:
+                    self.serial_manager.send_torque_command(0.0)
+                    import time
+                    time.sleep(0.1)  # Allow time for command to be sent
+                except:
+                    pass  # Ignore errors during shutdown
             
-            # Save configuration
-            self.save_configuration()
+            # Save configuration (without showing status messages)
+            self.save_configuration_silent()
             
             # Disconnect serial
-            self.serial_manager.disconnect()
+            if hasattr(self, 'serial_manager'):
+                self.serial_manager.disconnect()
+            
+            # Force quit application
+            QApplication.instance().quit()
             
             # Accept the close event
             event.accept()
             
         except Exception as e:
-            self.error_handler.log_error("Shutdown", f"Error during application shutdown: {e}")
-            event.accept()  # Close anyway
+            try:
+                self.error_handler.log_error("Shutdown", f"Error during application shutdown: {e}")
+            except:
+                print(f"Error during application shutdown: {e}")
+            
+            # Force quit even if there are errors
+            QApplication.instance().quit()
+            event.accept()

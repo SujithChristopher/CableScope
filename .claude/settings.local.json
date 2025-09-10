@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Read(//e/CMC/pyprojects/wave_craze/**)"
+      "Read(//e/CMC/pyprojects/wave_craze/**)",
+      "Bash(python:*)",
+      "Bash(conda activate:*)",
+      "Bash(call conda activate py13)",
+      "Bash(where conda)",
+      "Bash(C:UsersPintuminiconda3condabinconda.bat activate py13)"
     ],
     "deny": [],
     "ask": []

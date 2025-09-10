@@ -157,20 +157,30 @@ class EnhancedStatusBar(QStatusBar):
     
     def update_displays(self):
         """Update time-dependent displays"""
-        # Update data count
-        self.data_count_label.setText(f"Data: {self.data_count}")
-        
-        # Update last command time indicator
-        if self.last_command_time:
-            time_since_command = time.time() - self.last_command_time
-            if time_since_command < 5.0:  # Show for 5 seconds
-                self.last_command_label.setStyleSheet("padding: 2px 8px; font-family: monospace; color: green;")
-            else:
-                self.last_command_label.setStyleSheet("padding: 2px 8px; font-family: monospace; color: black;")
+        try:
+            # Update data count
+            self.data_count_label.setText(f"Data: {self.data_count}")
+            
+            # Update last command time indicator
+            if self.last_command_time:
+                time_since_command = time.time() - self.last_command_time
+                if time_since_command < 5.0:  # Show for 5 seconds
+                    self.last_command_label.setStyleSheet("padding: 2px 8px; font-family: monospace; color: green;")
+                else:
+                    self.last_command_label.setStyleSheet("padding: 2px 8px; font-family: monospace; color: black;")
+        except RecursionError:
+            print("RecursionError in status bar update_displays - skipping update")
+        except Exception as e:
+            print(f"Error in status bar update_displays: {e}")
     
     def show_message(self, message: str, timeout: int = 2000):
         """Show temporary message"""
-        super().showMessage(message, timeout)
+        try:
+            super().showMessage(message, timeout)
+        except RecursionError:
+            print(f"RecursionError in show_message: {message}")
+        except Exception as e:
+            print(f"Error in show_message: {e} - Message: {message}")
     
     def set_theme(self, is_dark: bool):
         """Update status bar theme"""

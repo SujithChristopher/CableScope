@@ -72,24 +72,42 @@ class ErrorHandler(QObject):
     
     def log_error(self, error_type: str, message: str, exception: Optional[Exception] = None):
         """Log an error with optional exception details"""
-        if exception:
-            self.logger.error(f"{error_type}: {message} - {str(exception)}")
-            if hasattr(exception, '__traceback__') and exception.__traceback__:
-                traceback_str = "".join(traceback.format_tb(exception.__traceback__))
-                self.logger.error(f"Traceback: {traceback_str}")
-        else:
-            self.logger.error(f"{error_type}: {message}")
-        
-        self.error_occurred.emit(error_type, message)
+        try:
+            if exception:
+                self.logger.error(f"{error_type}: {message} - {str(exception)}")
+                if hasattr(exception, '__traceback__') and exception.__traceback__:
+                    traceback_str = "".join(traceback.format_tb(exception.__traceback__))
+                    self.logger.error(f"Traceback: {traceback_str}")
+            else:
+                self.logger.error(f"{error_type}: {message}")
+            
+            self.error_occurred.emit(error_type, message)
+        except RecursionError:
+            print(f"RecursionError in log_error: [{error_type}] {message}")
+        except Exception as e:
+            print(f"Error in error handler: {e}")
+            print(f"Original error: [{error_type}] {message}")
     
     def log_warning(self, message: str):
         """Log a warning"""
-        self.logger.warning(message)
-        self.warning_occurred.emit(message)
+        try:
+            self.logger.warning(message)
+            self.warning_occurred.emit(message)
+        except RecursionError:
+            print(f"RecursionError in log_warning: {message}")
+        except Exception as e:
+            print(f"Error in warning handler: {e}")
+            print(f"Original warning: {message}")
     
     def log_info(self, message: str):
         """Log an info message"""
-        self.logger.info(message)
+        try:
+            self.logger.info(message)
+        except RecursionError:
+            print(f"RecursionError in log_info: {message}")
+        except Exception as e:
+            print(f"Error in info handler: {e}")
+            print(f"Original info: {message}")
     
     def log_debug(self, message: str):
         """Log a debug message"""

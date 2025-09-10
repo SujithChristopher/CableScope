@@ -62,6 +62,9 @@ class SerialCommunicationManager(QObject):
         # Thread pool for non-blocking operations
         self.thread_pool = QThreadPool()
         
+        # Port scanning control
+        self._scanning_enabled = True
+        
         # Initial port scan
         self.scan_ports()
     
@@ -70,19 +73,35 @@ class SerialCommunicationManager(QObject):
         try:
             ports = serial.tools.list_ports.comports()
             return [port.device for port in ports if port.device]
+        except RecursionError:
+            # Handle recursion error specifically to prevent infinite loops
+            print("RecursionError occurred while scanning ports - returning empty list")
+            return []
         except Exception as e:
             self.error_occurred.emit(f"Error scanning ports: {e}")
             return []
     
     def scan_ports(self):
         """Scan for available ports and emit signal if changed"""
+        if not self._scanning_enabled:
+            return
+            
         try:
             current_ports = self.get_available_ports()
             if current_ports != self._last_ports:
                 self._last_ports = current_ports
                 self.ports_updated.emit(current_ports)
+        except RecursionError:
+            print("RecursionError in scan_ports - skipping scan")
         except Exception as e:
-            self.error_occurred.emit(f"Error during port scan: {e}")
+            try:
+                self.error_occurred.emit(f"Error during port scan: {e}")
+            except:
+                print(f"Error during port scan: {e}")
+    
+    def disable_scanning(self):
+        """Disable port scanning (for shutdown)"""
+        self._scanning_enabled = False
     
     def connect_to_port(self, port: str, baud_rate: int = 115200, timeout: float = 1.0) -> bool:
         """Connect to a serial port"""
