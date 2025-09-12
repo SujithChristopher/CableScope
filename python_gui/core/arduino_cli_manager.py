@@ -195,14 +195,22 @@ class ArduinoCliDownloader(QThread):
     
     def _get_install_directory(self) -> Path:
         """Get the installation directory for Arduino CLI"""
+        return self._get_cablescope_tools_directory()
+    
+    def _get_cablescope_tools_directory(self) -> Path:
+        """Get the CableScope tools directory in Documents folder"""
+        # Use Documents/CableScope/tools/arduino-cli for easier access
         if platform.system() == "Windows":
-            base_dir = Path(os.environ.get('APPDATA', ''))
-        elif platform.system() == "Darwin":
-            base_dir = Path.home() / "Library" / "Application Support"
-        else:  # Linux
-            base_dir = Path.home() / ".config"
+            # Try Documents folder first, fallback to USERPROFILE
+            docs_path = Path(os.environ.get('USERPROFILE', '')) / "Documents"
+            if not docs_path.exists():
+                docs_path = Path(os.environ.get('USERPROFILE', ''))
+        else:  # macOS and Linux
+            docs_path = Path.home() / "Documents"
+            if not docs_path.exists():
+                docs_path = Path.home()
             
-        return base_dir / "CableScope" / "tools" / "arduino-cli"
+        return docs_path / "CableScope" / "tools" / "arduino-cli"
 
 
 class ArduinoCliManager(QObject):
@@ -302,15 +310,19 @@ class ArduinoCliManager(QObject):
         return None
     
     def _get_local_install_directory(self) -> Path:
-        """Get local installation directory"""
+        """Get local installation directory - same as install directory"""
+        # Use the same logic as the downloader class
         if platform.system() == "Windows":
-            base_dir = Path(os.environ.get('APPDATA', ''))
-        elif platform.system() == "Darwin":
-            base_dir = Path.home() / "Library" / "Application Support"
-        else:  # Linux
-            base_dir = Path.home() / ".config"
+            # Try Documents folder first, fallback to USERPROFILE
+            docs_path = Path(os.environ.get('USERPROFILE', '')) / "Documents"
+            if not docs_path.exists():
+                docs_path = Path(os.environ.get('USERPROFILE', ''))
+        else:  # macOS and Linux
+            docs_path = Path.home() / "Documents"
+            if not docs_path.exists():
+                docs_path = Path.home()
             
-        return base_dir / "CableScope" / "tools" / "arduino-cli"
+        return docs_path / "CableScope" / "tools" / "arduino-cli"
     
     def _on_download_complete(self, success: bool, message: str):
         """Handle download completion"""

@@ -452,7 +452,7 @@ class FirmwareTab(QWidget):
             # For now, we'll use a simple approach by accessing parent
             main_window = self.window()
             if hasattr(main_window, 'config_manager'):
-                config = main_window.config_manager.get_config()
+                config = main_window.config_manager.get_full_config()
                 if 'firmware' not in config:
                     config['firmware'] = {}
                 config['firmware']['arduino_cli_path'] = self.arduino_cli_path

@@ -310,16 +310,10 @@ def create_firmware_files(target_dir: str) -> dict:
     dir_name = target_path.name
     main_firmware_name = f"{dir_name}.ino"
     
-    # Create main firmware file with directory name
+    # Create main firmware file with directory name (contains everything)
     firmware_path = target_path / main_firmware_name
     with open(firmware_path, 'w', encoding='utf-8') as f:
         f.write(get_firmware_content("combined"))
     created_files["firmware.ino"] = str(firmware_path)  # Keep consistent key name
-    
-    # Create separate angle_motor.ino for reference (optional)
-    angle_motor_path = target_path / "angle_motor.ino"
-    with open(angle_motor_path, 'w', encoding='utf-8') as f:
-        f.write(get_firmware_content("angle_motor"))
-    created_files["angle_motor.ino"] = str(angle_motor_path)
     
     return created_files

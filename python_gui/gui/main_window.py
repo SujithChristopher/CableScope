@@ -517,6 +517,13 @@ class MainWindow(QMainWindow):
             # Save from tabs
             self.settings_tab.save_configuration()
             
+            # Save firmware tab configuration (Arduino CLI path, etc.)
+            firmware_config = self.firmware_tab.save_configuration()
+            if firmware_config:
+                current_config = self.config_manager.get_full_config()
+                current_config.update(firmware_config)
+                self.config_manager.save_config(current_config)
+            
             self.enhanced_status_bar.show_message("Configuration saved", 2000)
             
         except Exception as e:
@@ -528,6 +535,13 @@ class MainWindow(QMainWindow):
             # Get current window size  
             size = self.size()
             self.config_manager.set_window_size(size.width(), size.height())
+            
+            # Save firmware tab configuration (Arduino CLI path, etc.)
+            firmware_config = self.firmware_tab.save_configuration()
+            if firmware_config:
+                current_config = self.config_manager.get_full_config()
+                current_config.update(firmware_config)
+                self.config_manager.save_config(current_config)
             
             # Save configuration directly without going through settings tab to avoid recursion
             self.config_manager.save_config()
