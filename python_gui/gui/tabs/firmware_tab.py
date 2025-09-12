@@ -41,6 +41,10 @@ class FirmwareUploadWorker(QThread):
         try:
             self.upload_started.emit()
             
+            # First, install required platforms and libraries
+            if not self._install_dependencies():
+                return
+            
             # Compile command
             compile_cmd = [
                 self.arduino_cli_path,
@@ -91,6 +95,138 @@ class FirmwareUploadWorker(QThread):
             self.upload_completed.emit(False, "Upload timed out")
         except Exception as e:
             self.upload_completed.emit(False, f"Upload error: {str(e)}")
+    
+    def _install_dependencies(self) -> bool:
+        """Install required platforms and libraries for the selected board"""
+        try:
+            # Determine required platform based on board type
+            if self.board_type.startswith("teensy:avr:"):
+                return self._install_teensy_platform()
+            elif self.board_type.startswith("arduino:avr:"):
+                # Arduino AVR platform is usually pre-installed
+                return True
+            else:
+                self.upload_progress.emit(f"Unknown platform for board: {self.board_type}")
+                return True  # Continue anyway
+                
+        except Exception as e:
+            self.upload_completed.emit(False, f"Platform installation error: {str(e)}")
+            return False
+    
+    def _install_teensy_platform(self) -> bool:
+        """Install Teensy platform and required tools"""
+        try:
+            self.upload_progress.emit("Installing Teensy platform (first time setup)...")
+            
+            # Update package index first
+            update_cmd = [self.arduino_cli_path, "core", "update-index"]
+            update_result = subprocess.run(
+                update_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if update_result.returncode != 0:
+                print(f"Warning: Core update failed: {update_result.stderr}")
+            
+            # Add Teensy board manager URL
+            config_cmd = [
+                self.arduino_cli_path, "config", "add", "board_manager.additional_urls",
+                "https://www.pjrc.com/teensy/package_teensy_index.json"
+            ]
+            config_result = subprocess.run(
+                config_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if config_result.returncode != 0:
+                print(f"Warning: Config update failed: {config_result.stderr}")
+                # Try alternative approach - this might already be configured
+            
+            # Update index again with new URL
+            update_cmd2 = [self.arduino_cli_path, "core", "update-index"]
+            update_result2 = subprocess.run(
+                update_cmd2,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if update_result2.returncode != 0:
+                print(f"Warning: Second core update failed: {update_result2.stderr}")
+            
+            # Install Teensy platform
+            self.upload_progress.emit("Downloading Teensy platform...")
+            install_cmd = [self.arduino_cli_path, "core", "install", "teensy:avr"]
+            install_result = subprocess.run(
+                install_cmd,
+                capture_output=True,
+                text=True,
+                timeout=180  # 3 minute timeout for download
+            )
+            
+            if install_result.returncode == 0:
+                self.upload_progress.emit("Teensy platform installed successfully")
+            else:
+                # Try to continue anyway - platform might already be installed
+                print(f"Platform install result: {install_result.stderr}")
+                if "already installed" in install_result.stderr.lower():
+                    self.upload_progress.emit("Teensy platform already installed")
+                else:
+                    self.upload_completed.emit(False, f"Failed to install Teensy platform: {install_result.stderr}")
+                    return False
+            
+            # Install required libraries
+            return self._install_required_libraries()
+                    
+        except subprocess.TimeoutExpired:
+            self.upload_completed.emit(False, "Platform installation timed out")
+            return False
+        except Exception as e:
+            self.upload_completed.emit(False, f"Platform installation error: {str(e)}")
+            return False
+    
+    def _install_required_libraries(self) -> bool:
+        """Install required libraries for the firmware"""
+        try:
+            required_libraries = [
+                "HX711 ADC",  # For HX711 load cell amplifier
+                "Encoder"     # For rotary encoder support
+            ]
+            
+            for library_name in required_libraries:
+                self.upload_progress.emit(f"Installing library: {library_name}")
+                
+                lib_cmd = [self.arduino_cli_path, "lib", "install", library_name]
+                lib_result = subprocess.run(
+                    lib_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if lib_result.returncode == 0:
+                    self.upload_progress.emit(f"Library '{library_name}' installed successfully")
+                else:
+                    # Check if already installed
+                    if "already installed" in lib_result.stderr.lower() or "already up-to-date" in lib_result.stderr.lower():
+                        self.upload_progress.emit(f"Library '{library_name}' already installed")
+                    else:
+                        print(f"Warning: Failed to install library '{library_name}': {lib_result.stderr}")
+                        # Continue anyway - library might be available in a different form
+            
+            self.upload_progress.emit("Library installation completed")
+            return True
+            
+        except subprocess.TimeoutExpired:
+            self.upload_completed.emit(False, "Library installation timed out")
+            return False
+        except Exception as e:
+            self.upload_completed.emit(False, f"Library installation error: {str(e)}")
+            return False
 
 
 class FirmwareTab(QWidget):
@@ -215,6 +351,12 @@ class FirmwareTab(QWidget):
         self.use_default_checkbox.setChecked(True)
         self.use_default_checkbox.toggled.connect(self.on_use_default_toggled)
         layout.addWidget(self.use_default_checkbox, 1, 0, 1, 3)
+        
+        # Info label about automatic setup
+        info_label = QLabel("Note: First upload will automatically install Teensy platform and required libraries")
+        info_label.setStyleSheet("color: #666666; font-style: italic; font-size: 9px;")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label, 2, 0, 1, 3)
         
         return group
     
