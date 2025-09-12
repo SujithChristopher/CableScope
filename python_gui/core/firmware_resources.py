@@ -287,6 +287,7 @@ def get_available_firmware_types() -> list:
 def create_firmware_files(target_dir: str) -> dict:
     """
     Create firmware files in the specified directory.
+    Arduino CLI requires the main .ino file to have the same name as its directory.
     
     Args:
         target_dir: Directory to create firmware files in
@@ -305,11 +306,15 @@ def create_firmware_files(target_dir: str) -> dict:
     
     created_files = {}
     
-    # Create combined firmware.ino (main file for Arduino IDE/CLI)
-    firmware_path = target_path / "firmware.ino"
+    # Arduino CLI requires main .ino file to have same name as directory
+    dir_name = target_path.name
+    main_firmware_name = f"{dir_name}.ino"
+    
+    # Create main firmware file with directory name
+    firmware_path = target_path / main_firmware_name
     with open(firmware_path, 'w', encoding='utf-8') as f:
         f.write(get_firmware_content("combined"))
-    created_files["firmware.ino"] = str(firmware_path)
+    created_files["firmware.ino"] = str(firmware_path)  # Keep consistent key name
     
     # Create separate angle_motor.ino for reference (optional)
     angle_motor_path = target_path / "angle_motor.ino"

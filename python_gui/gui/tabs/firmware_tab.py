@@ -334,14 +334,27 @@ class FirmwareTab(QWidget):
         except Exception as e:
             print(f"Error loading firmware tab configuration: {e}")
     
+    def save_configuration(self) -> Dict[str, Any]:
+        """Save current configuration settings"""
+        return {
+            "firmware": {
+                "arduino_cli_path": self.arduino_cli_path,
+                "board_type": self.board_type,
+                "firmware_path": self.firmware_path if not self.use_embedded_firmware else "",
+                "use_embedded_firmware": self.use_embedded_firmware
+            }
+        }
+    
     def set_default_firmware_path(self):
         """Set default firmware path using embedded firmware"""
         try:
             self.use_embedded_firmware = True
             
-            # Create temporary firmware directory if needed
+            # Create temporary firmware directory with proper Arduino sketch name
             if not self.temp_firmware_dir:
-                self.temp_firmware_dir = tempfile.mkdtemp(prefix="cablescope_firmware_")
+                # Use a consistent directory name for Arduino CLI compatibility
+                temp_base = tempfile.mkdtemp(prefix="cablescope_temp_")
+                self.temp_firmware_dir = os.path.join(temp_base, "cablescope_firmware")
             
             # Create firmware files from embedded resources
             created_files = create_firmware_files(self.temp_firmware_dir)
@@ -432,6 +445,21 @@ class FirmwareTab(QWidget):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_text.append(f"[{timestamp}] {message}")
     
+    def save_cli_path_to_config(self):
+        """Save Arduino CLI path to configuration immediately"""
+        try:
+            # We need to emit a signal to the main window to save config
+            # For now, we'll use a simple approach by accessing parent
+            main_window = self.window()
+            if hasattr(main_window, 'config_manager'):
+                config = main_window.config_manager.get_config()
+                if 'firmware' not in config:
+                    config['firmware'] = {}
+                config['firmware']['arduino_cli_path'] = self.arduino_cli_path
+                main_window.config_manager.save_config(config)
+        except Exception as e:
+            print(f"Error saving CLI path to config: {e}")
+    
     # Event handlers
     @Slot(str)
     def on_cli_path_changed(self, path: str):
@@ -439,6 +467,8 @@ class FirmwareTab(QWidget):
         self.arduino_cli_path = path
         self.cli_status_label.setText("Not tested")
         self.cli_status_label.setStyleSheet("color: gray;")
+        # Save configuration when CLI path changes
+        self.save_cli_path_to_config()
     
     @Slot(str)
     def on_board_changed(self, board_type: str):
@@ -544,10 +574,18 @@ class FirmwareTab(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         
+        # For embedded firmware, use the directory path; for external firmware, use the file path
+        if self.use_embedded_firmware:
+            # Arduino CLI needs the sketch directory, not the .ino file
+            upload_path = os.path.dirname(self.firmware_path)
+        else:
+            # For external firmware, Arduino CLI still needs the directory containing the .ino file
+            upload_path = os.path.dirname(self.firmware_path)
+        
         # Start upload worker
         self.upload_worker = FirmwareUploadWorker(
             self.arduino_cli_path,
-            self.firmware_path,
+            upload_path,
             self.port_combo.currentText(),
             self.board_type
         )
@@ -654,6 +692,9 @@ class FirmwareTab(QWidget):
         """Handle successful CLI installation"""
         self.arduino_cli_path = cli_path
         self.cli_path_edit.setText(cli_path)
+        
+        # Save the CLI path to config immediately
+        self.save_cli_path_to_config()
         
         self.download_cli_button.setEnabled(True)
         self.download_cli_button.setText("Download CLI")
