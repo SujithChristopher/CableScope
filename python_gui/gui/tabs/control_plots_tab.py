@@ -43,7 +43,7 @@ class ControlPlotsTab(QWidget):
         self.is_data_acquisition_active = False
         self.current_torque = 0.0
         self.current_angle = 0.0
-        self.max_torque = 5.0
+        self.max_torque = 40.0
         self.torque_step = 0.1
         self.available_ports = []
         
@@ -224,7 +224,7 @@ class ControlPlotsTab(QWidget):
         # Max torque setting
         layout.addWidget(QLabel("Max Torque:"), 4, 0)
         self.max_torque_spinbox = QDoubleSpinBox()
-        self.max_torque_spinbox.setRange(0.1, 10.0)
+        self.max_torque_spinbox.setRange(0.1, 100.0)
         self.max_torque_spinbox.setValue(self.max_torque)
         self.max_torque_spinbox.setSuffix(" Nm")
         self.max_torque_spinbox.valueChanged.connect(self.on_max_torque_changed)
@@ -453,7 +453,7 @@ class ControlPlotsTab(QWidget):
         try:
             # Load motor control settings
             motor_config = config.get("motor_control", {})
-            self.max_torque = motor_config.get("max_torque", 5.0)
+            self.max_torque = motor_config.get("max_torque", 40.0)
             self.torque_step = motor_config.get("torque_step", 0.1)
             
             # Update UI

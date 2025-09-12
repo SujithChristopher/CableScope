@@ -36,7 +36,7 @@ class ConfigManager(QObject):
                 "port": ""
             },
             "motor_control": {
-                "max_torque": 5.0,
+                "max_torque": 40.0,
                 "torque_step": 0.1,
                 "default_torque": 0.0
             },

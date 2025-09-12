@@ -46,6 +46,7 @@ class MainWindow(QMainWindow):
         self.current_data = {"torque": 0.0, "angle": 0.0}
         self.data_buffer = {"torque": [], "angle": [], "time": []}
         self.buffer_size = 1000
+        self._loading_configuration = False  # Flag to prevent recursion
         
         # Setup UI
         self.setup_ui()
@@ -238,6 +239,11 @@ class MainWindow(QMainWindow):
     def load_configuration(self):
         """Load application configuration"""
         try:
+            # Prevent recursion during configuration loading
+            if self._loading_configuration:
+                return
+            self._loading_configuration = True
+            
             # Load config
             config = self.config_manager.load_config()
             
@@ -257,6 +263,8 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             self.error_handler.log_error("ConfigurationLoad", f"Failed to load configuration: {e}")
+        finally:
+            self._loading_configuration = False
     
     def apply_theme(self):
         """Apply current theme to the application"""
@@ -536,15 +544,14 @@ class MainWindow(QMainWindow):
             size = self.size()
             self.config_manager.set_window_size(size.width(), size.height())
             
-            # Save firmware tab configuration (Arduino CLI path, etc.)
+            # Save firmware tab configuration (Arduino CLI path, etc.) 
             firmware_config = self.firmware_tab.save_configuration()
+            current_config = self.config_manager.get_full_config()
             if firmware_config:
-                current_config = self.config_manager.get_full_config()
                 current_config.update(firmware_config)
-                self.config_manager.save_config(current_config)
             
             # Save configuration directly without going through settings tab to avoid recursion
-            self.config_manager.save_config()
+            self.config_manager.save_config(current_config)
             
         except RecursionError:
             print("RecursionError in save_configuration_silent - skipping save")
@@ -699,6 +706,9 @@ class MainWindow(QMainWindow):
     @Slot(dict)
     def on_configuration_changed(self, config: dict):
         """Handle configuration change"""
+        # Prevent recursion during configuration loading
+        if self._loading_configuration:
+            return
         # Reload configuration in all tabs
         self.load_configuration()
     

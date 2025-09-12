@@ -244,6 +244,7 @@ class FirmwareTab(QWidget):
         self.firmware_path = ""
         self.selected_port = ""
         self.board_type = "teensy:avr:teensy41"
+        self._loading_config = False  # Flag to prevent recursion during config load
         
         # Upload worker
         self.upload_worker = None
@@ -443,6 +444,11 @@ class FirmwareTab(QWidget):
     def load_configuration(self, config: Dict[str, Any]):
         """Load configuration settings"""
         try:
+            # Prevent recursion during config loading
+            if self._loading_config:
+                return
+            self._loading_config = True
+            
             firmware_config = config.get("firmware", {})
             
             # Arduino CLI path
@@ -470,11 +476,13 @@ class FirmwareTab(QWidget):
                 self.use_default_checkbox.setChecked(False)
                 self.use_embedded_firmware = False
             
-            # Refresh ports
-            self.refresh_ports()
+            # Skip refresh_ports during config loading to prevent recursion
+            # The ports will be refreshed by normal operations
             
         except Exception as e:
             print(f"Error loading firmware tab configuration: {e}")
+        finally:
+            self._loading_config = False
     
     def save_configuration(self) -> Dict[str, Any]:
         """Save current configuration settings"""
@@ -531,8 +539,11 @@ class FirmwareTab(QWidget):
             ports = serial.tools.list_ports.comports()
             
             current_selection = self.port_combo.currentText()
-            self.port_combo.clear()
             
+            # Block signals to prevent recursion
+            self.port_combo.blockSignals(True)
+            
+            self.port_combo.clear()
             port_names = [port.device for port in ports]
             self.port_combo.addItems(port_names)
             
@@ -551,10 +562,15 @@ class FirmwareTab(QWidget):
                 self.port_combo.setCurrentText(current_selection)
                 print(f"DEBUG: Restored firmware port selection: {current_selection}")
             
+            # Re-enable signals
+            self.port_combo.blockSignals(False)
+            
             self.add_log_message(f"Found {len(port_names)} COM ports: {', '.join(port_names)}")
             
         except Exception as e:
             self.add_log_message(f"Error refreshing ports: {e}")
+            # Make sure to unblock signals even on error
+            self.port_combo.blockSignals(False)
     
     def find_teensy_port(self, ports):
         """Find the Teensy port from available ports"""

@@ -88,7 +88,7 @@ class SettingsTab(QWidget):
         layout.addWidget(QLabel("Max Torque:"), 0, 0)
         self.max_torque_spinbox = QDoubleSpinBox()
         self.max_torque_spinbox.setRange(0.1, 50.0)
-        self.max_torque_spinbox.setValue(5.0)
+        self.max_torque_spinbox.setValue(40.0)
         self.max_torque_spinbox.setSuffix(" Nm")
         layout.addWidget(self.max_torque_spinbox, 0, 1)
         
@@ -192,7 +192,7 @@ class SettingsTab(QWidget):
             
             # Motor settings
             motor_config = config.get("motor_control", {})
-            self.max_torque_spinbox.setValue(motor_config.get("max_torque", 5.0))
+            self.max_torque_spinbox.setValue(motor_config.get("max_torque", 40.0))
             self.torque_step_spinbox.setValue(motor_config.get("torque_step", 0.1))
             
             # Data acquisition settings
@@ -299,7 +299,7 @@ class SettingsTab(QWidget):
             # Reset UI to defaults
             self.baud_rate_combo.setCurrentText("115200")
             self.timeout_spinbox.setValue(1.0)
-            self.max_torque_spinbox.setValue(5.0)
+            self.max_torque_spinbox.setValue(40.0)
             self.torque_step_spinbox.setValue(0.1)
             self.sampling_rate_spinbox.setValue(10)
             self.buffer_size_spinbox.setValue(1000)

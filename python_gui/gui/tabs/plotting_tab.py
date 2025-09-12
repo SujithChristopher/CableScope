@@ -112,13 +112,13 @@ class PlottingTab(QWidget):
         layout.addWidget(QLabel("Torque Range:"), 1, 2)
         self.torque_range_min = QDoubleSpinBox()
         self.torque_range_min.setRange(-50.0, 50.0)
-        self.torque_range_min.setValue(-5.0)
+        self.torque_range_min.setValue(-40.0)
         self.torque_range_min.setPrefix("Min: ")
         layout.addWidget(self.torque_range_min, 1, 3)
         
         self.torque_range_max = QDoubleSpinBox()
         self.torque_range_max.setRange(-50.0, 50.0)
-        self.torque_range_max.setValue(5.0)
+        self.torque_range_max.setValue(40.0)
         self.torque_range_max.setPrefix("Max: ")
         layout.addWidget(self.torque_range_max, 1, 4)
         
