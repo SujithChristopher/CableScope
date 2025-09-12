@@ -214,34 +214,21 @@ class ControlPlotsTab(QWidget):
         self.torque_slider.valueChanged.connect(self.on_torque_slider_changed)
         layout.addWidget(self.torque_slider, 2, 0, 1, 2)
         
-        # Preset buttons (smaller grid)
-        preset_layout = QGridLayout()
-        preset_values = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0]
-        
-        for i, value in enumerate(preset_values):
-            btn = QPushButton(f"{value:+.1f}")
-            btn.setMaximumWidth(50)
-            btn.clicked.connect(lambda checked, v=value: self.set_torque_value(v))
-            row, col = i // 4, i % 4
-            preset_layout.addWidget(btn, row, col)
-        
-        layout.addWidget(QLabel("Presets:"), 3, 0)
-        layout.addLayout(preset_layout, 4, 0, 1, 2)
         
         # Send command button
         self.send_torque_button = QPushButton("Send Torque Command")
         self.send_torque_button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         self.send_torque_button.clicked.connect(self.on_send_torque_clicked)
-        layout.addWidget(self.send_torque_button, 5, 0, 1, 2)
+        layout.addWidget(self.send_torque_button, 3, 0, 1, 2)
         
         # Max torque setting
-        layout.addWidget(QLabel("Max Torque:"), 6, 0)
+        layout.addWidget(QLabel("Max Torque:"), 4, 0)
         self.max_torque_spinbox = QDoubleSpinBox()
         self.max_torque_spinbox.setRange(0.1, 10.0)
         self.max_torque_spinbox.setValue(self.max_torque)
         self.max_torque_spinbox.setSuffix(" Nm")
         self.max_torque_spinbox.valueChanged.connect(self.on_max_torque_changed)
-        layout.addWidget(self.max_torque_spinbox, 6, 1)
+        layout.addWidget(self.max_torque_spinbox, 4, 1)
         
         return group
     

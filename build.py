@@ -170,13 +170,8 @@ def verify_build():
     
     print(f"✅ Executable found: {executable}")
     
-    # Check if firmware is bundled
-    firmware_dir = dist_dir / "firmware"
-    if not firmware_dir.exists():
-        print(f"⚠️  Firmware directory not bundled: {firmware_dir}")
-    else:
-        firmware_files = list(firmware_dir.glob("*.ino"))
-        print(f"✅ Firmware bundled: {len(firmware_files)} files")
+    # Note: Firmware is now embedded in Python code, no external files needed
+    print(f"✅ Firmware embedded in application (no external files required)")
     
     return True
 

@@ -12,15 +12,11 @@ from pathlib import Path
 # Get the project root directory
 spec_dir = os.path.dirname(os.path.abspath(SPECPATH))
 project_root = Path(spec_dir).parent
-firmware_dir = project_root / "firmware"
 
-# Build data files list
+# Build data files list  
+# NOTE: Firmware is now embedded in Python code via firmware_resources.py
+# No external firmware files needed for distribution
 datas = []
-if firmware_dir.exists():
-    for firmware_file in ['firmware.ino', 'angle_motor.ino']:
-        firmware_path = firmware_dir / firmware_file
-        if firmware_path.exists():
-            datas.append((str(firmware_path), 'firmware/'))
 
 # Analysis: find all Python modules and dependencies
 block_cipher = None
@@ -49,6 +45,7 @@ a = Analysis(
         'core.serial_manager',
         'core.error_handler',
         'core.arduino_cli_manager',
+        'core.firmware_resources',
         # GUI modules
         'gui.main_window',
         'gui.tabs.control_plots_tab',

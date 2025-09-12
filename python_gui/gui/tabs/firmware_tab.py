@@ -12,11 +12,14 @@ from PySide6.QtCore import Signal, Slot, Qt, QThread, QTimer
 from PySide6.QtGui import QFont
 import subprocess
 import os
+import tempfile
+import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 # Import Arduino CLI manager
 from core.arduino_cli_manager import ArduinoCliManager
+from core.firmware_resources import get_firmware_content, create_firmware_files
 
 
 class FirmwareUploadWorker(QThread):
@@ -109,6 +112,10 @@ class FirmwareTab(QWidget):
         # Upload worker
         self.upload_worker = None
         self.is_uploading = False
+        
+        # Temporary firmware management
+        self.temp_firmware_dir = None
+        self.use_embedded_firmware = True
         
         # Arduino CLI manager
         self.cli_manager = ArduinoCliManager()
@@ -203,8 +210,8 @@ class FirmwareTab(QWidget):
         self.browse_firmware_button.clicked.connect(self.browse_firmware)
         layout.addWidget(self.browse_firmware_button, 0, 2)
         
-        # Use default checkbox
-        self.use_default_checkbox = QCheckBox("Use default firmware (firmware/firmware.ino)")
+        # Use embedded firmware checkbox
+        self.use_default_checkbox = QCheckBox("Use embedded firmware (recommended)")
         self.use_default_checkbox.setChecked(True)
         self.use_default_checkbox.toggled.connect(self.on_use_default_toggled)
         layout.addWidget(self.use_default_checkbox, 1, 0, 1, 3)
@@ -309,12 +316,17 @@ class FirmwareTab(QWidget):
             
             # Firmware path
             firmware_path = firmware_config.get("firmware_path", "")
-            if firmware_path and os.path.exists(firmware_path):
+            use_embedded = firmware_config.get("use_embedded_firmware", True)
+            
+            if use_embedded or not firmware_path or not os.path.exists(firmware_path):
+                # Use embedded firmware (default)
+                self.set_default_firmware_path()
+            else:
+                # Use external firmware file
                 self.firmware_path = firmware_path
                 self.firmware_path_edit.setText(firmware_path)
                 self.use_default_checkbox.setChecked(False)
-            else:
-                self.set_default_firmware_path()
+                self.use_embedded_firmware = False
             
             # Refresh ports
             self.refresh_ports()
@@ -323,21 +335,39 @@ class FirmwareTab(QWidget):
             print(f"Error loading firmware tab configuration: {e}")
     
     def set_default_firmware_path(self):
-        """Set default firmware path"""
+        """Set default firmware path using embedded firmware"""
         try:
-            # Relative to the python_gui directory
-            current_dir = Path(__file__).parent.parent.parent
-            default_path = current_dir.parent / "firmware" / "firmware.ino"
+            self.use_embedded_firmware = True
             
-            if default_path.exists():
-                self.firmware_path = str(default_path)
-                self.firmware_path_edit.setText(str(default_path))
-                self.add_log_message(f"Using default firmware: {default_path}")
-            else:
-                self.add_log_message(f"Warning: Default firmware not found at {default_path}")
-                
+            # Create temporary firmware directory if needed
+            if not self.temp_firmware_dir:
+                self.temp_firmware_dir = tempfile.mkdtemp(prefix="cablescope_firmware_")
+            
+            # Create firmware files from embedded resources
+            created_files = create_firmware_files(self.temp_firmware_dir)
+            
+            # Set path to the main firmware.ino file
+            self.firmware_path = created_files["firmware.ino"]
+            self.firmware_path_edit.setText("[Embedded Firmware]")
+            self.add_log_message(f"Using embedded firmware (extracted to temporary location)")
+            
         except Exception as e:
-            self.add_log_message(f"Error setting default firmware path: {e}")
+            self.add_log_message(f"Error setting up embedded firmware: {e}")
+            # Fallback: try to use external firmware if it exists
+            try:
+                current_dir = Path(__file__).parent.parent.parent
+                fallback_path = current_dir.parent / "firmware" / "firmware.ino"
+                
+                if fallback_path.exists():
+                    self.firmware_path = str(fallback_path)
+                    self.firmware_path_edit.setText(str(fallback_path))
+                    self.use_embedded_firmware = False
+                    self.add_log_message(f"Fallback: Using external firmware: {fallback_path}")
+                else:
+                    self.add_log_message(f"Error: No firmware available (embedded failed, external not found)")
+                    
+            except Exception as fallback_error:
+                self.add_log_message(f"Error: Firmware setup failed completely: {fallback_error}")
     
     def refresh_ports(self):
         """Refresh available COM ports"""
@@ -417,12 +447,17 @@ class FirmwareTab(QWidget):
     
     @Slot(bool)
     def on_use_default_toggled(self, checked: bool):
-        """Handle use default firmware toggle"""
+        """Handle use embedded firmware toggle"""
         if checked:
             self.set_default_firmware_path()
             self.browse_firmware_button.setEnabled(False)
         else:
             self.browse_firmware_button.setEnabled(True)
+            self.use_embedded_firmware = False
+            # Clear current firmware path when switching to external
+            if self.firmware_path_edit.text() == "[Embedded Firmware]":
+                self.firmware_path_edit.setText("")
+                self.firmware_path = ""
     
     @Slot()
     def browse_arduino_cli(self):
@@ -446,6 +481,7 @@ class FirmwareTab(QWidget):
         )
         
         if filename:
+            self.use_embedded_firmware = False
             self.firmware_path = filename
             self.firmware_path_edit.setText(filename)
             self.firmware_path_changed.emit(filename)
@@ -644,6 +680,25 @@ class FirmwareTab(QWidget):
         QMessageBox.critical(self, "Download Failed", 
                            f"Failed to download Arduino CLI:\n{error_message}\n\n"
                            "You can try again or manually install Arduino CLI.")
+    
+    def cleanup_temp_files(self):
+        """Clean up temporary firmware files"""
+        try:
+            if self.temp_firmware_dir and Path(self.temp_firmware_dir).exists():
+                shutil.rmtree(self.temp_firmware_dir, ignore_errors=True)
+                self.add_log_message("Cleaned up temporary firmware files")
+                self.temp_firmware_dir = None
+        except Exception as e:
+            print(f"Error cleaning up temporary firmware files: {e}")
+    
+    def closeEvent(self, event):
+        """Handle tab close event"""
+        self.cleanup_temp_files()
+        super().closeEvent(event)
+    
+    def __del__(self):
+        """Destructor to clean up resources"""
+        self.cleanup_temp_files()
     
     def update_cli_ui_state(self):
         """Update CLI-related UI elements based on current state"""
