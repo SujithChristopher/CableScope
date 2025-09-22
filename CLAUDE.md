@@ -42,7 +42,7 @@ Commands: [0xFF][0xFF][CMD][DATA...]
 Data: [0xFF][0xFF][SIZE][CMD][DATA...][CHECKSUM]
 ```
 - **Torque commands**: Set motor torque via CMD_SET_TORQUE (0x01) with immediate PWM application
-- **Data streaming**: Real-time torque/angle data via CMD_GET_DATA (0x02) at 100ms intervals
+- **Data streaming**: Real-time torque/angle data via CMD_GET_DATA (0x02) as soon as HX711 measurements are available
 - **Packet structure**: 13-byte data packets (headers + size + command + torque + angle + checksum)
 - **Error handling**: Two's complement checksums, timeouts, and retry mechanisms
 - **Auto-detection**: Automatic Teensy port identification via USB VID:PID (16C0:0483)
@@ -53,6 +53,13 @@ Data: [0xFF][0xFF][SIZE][CMD][DATA...][CHECKSUM]
 - **Motor control**: PWM-based motor driver with enable/direction control (pins 8/9/10)
 - **Microcontroller**: Teensy 4.1 (recommended) or Arduino variants
 - **Motor response**: Immediate PWM application upon torque command receipt
+
+### Real-Time Data Acquisition
+- **Immediate logging**: Data is acquired and logged as soon as the HX711 amplifier returns measurements
+- **No fixed sampling rate**: The system reads data continuously as it becomes available from the Teensy
+- **Minimal latency**: DataReadingWorker thread reads serial data with only 10ms delay for CPU efficiency
+- **Hardware-driven timing**: Data rate depends on HX711 amplifier measurement frequency, not software timers
+- **Continuous operation**: Data flows immediately: HX711 → Teensy → Serial → GUI → CSV logging
 
 ## Configuration Management
 
@@ -67,13 +74,13 @@ Data: [0xFF][0xFF][SIZE][CMD][DATA...][CHECKSUM]
 baud_rate = 115200
 port = "COM3"
 
-[motor_control] 
+[motor_control]
 max_torque = 5.0
 torque_step = 0.1
 
 [data_acquisition]
-sampling_rate = 10
 buffer_size = 1000
+auto_start = false
 
 [plotting]
 time_window = 10

@@ -41,7 +41,6 @@ class ConfigManager(QObject):
                 "default_torque": 0.0
             },
             "data_acquisition": {
-                "sampling_rate": 10,  # Hz
                 "buffer_size": 1000,
                 "auto_start": False
             },

@@ -108,25 +108,23 @@ class SettingsTab(QWidget):
         group = QGroupBox("Data Acquisition")
         layout = QGridLayout(group)
         
-        # Sampling rate
-        layout.addWidget(QLabel("Sampling Rate:"), 0, 0)
-        self.sampling_rate_spinbox = QSpinBox()
-        self.sampling_rate_spinbox.setRange(1, 1000)
-        self.sampling_rate_spinbox.setValue(10)
-        self.sampling_rate_spinbox.setSuffix(" Hz")
-        layout.addWidget(self.sampling_rate_spinbox, 0, 1)
+        # Real-time data acquisition info
+        info_label = QLabel("Data is acquired in real-time as soon as HX711 returns values")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(info_label, 0, 0, 1, 4)
         
         # Buffer size
-        layout.addWidget(QLabel("Buffer Size:"), 0, 2)
+        layout.addWidget(QLabel("Buffer Size:"), 1, 0)
         self.buffer_size_spinbox = QSpinBox()
         self.buffer_size_spinbox.setRange(100, 10000)
         self.buffer_size_spinbox.setValue(1000)
         self.buffer_size_spinbox.setSuffix(" samples")
-        layout.addWidget(self.buffer_size_spinbox, 0, 3)
+        layout.addWidget(self.buffer_size_spinbox, 1, 1)
         
         # Auto-start
         self.auto_start_checkbox = QCheckBox("Auto-start data acquisition on connection")
-        layout.addWidget(self.auto_start_checkbox, 1, 0, 1, 4)
+        layout.addWidget(self.auto_start_checkbox, 2, 0, 1, 4)
         
         return group
     
@@ -197,7 +195,6 @@ class SettingsTab(QWidget):
             
             # Data acquisition settings
             data_config = config.get("data_acquisition", {})
-            self.sampling_rate_spinbox.setValue(data_config.get("sampling_rate", 10))
             self.buffer_size_spinbox.setValue(data_config.get("buffer_size", 1000))
             self.auto_start_checkbox.setChecked(data_config.get("auto_start", False))
             
@@ -222,7 +219,6 @@ class SettingsTab(QWidget):
                 "torque_step": self.torque_step_spinbox.value()
             },
             "data_acquisition": {
-                "sampling_rate": self.sampling_rate_spinbox.value(),
                 "buffer_size": self.buffer_size_spinbox.value(),
                 "auto_start": self.auto_start_checkbox.isChecked()
             },
@@ -301,7 +297,6 @@ class SettingsTab(QWidget):
             self.timeout_spinbox.setValue(1.0)
             self.max_torque_spinbox.setValue(40.0)
             self.torque_step_spinbox.setValue(0.1)
-            self.sampling_rate_spinbox.setValue(10)
             self.buffer_size_spinbox.setValue(1000)
             self.auto_start_checkbox.setChecked(False)
             self.theme_combo.setCurrentText("Dark")
