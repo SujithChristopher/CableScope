@@ -49,7 +49,7 @@ class ControlPlotsTab(QWidget):
         
         # Plot configuration
         self.time_window = 10.0
-        self.update_rate = 50
+        self.update_rate = 10  # 100Hz plot updates
         self.buffer_size = 1000
         
         # Data storage

@@ -481,9 +481,6 @@ class DataReadingWorker(QRunnable):
                     self.signals.data_received.emit(data)
                     consecutive_errors = 0  # Reset error counter
                 
-                # Small delay to prevent excessive CPU usage
-                time.sleep(0.01)  # 10ms delay
-                
             except Exception as e:
                 consecutive_errors += 1
                 if consecutive_errors < max_consecutive_errors:

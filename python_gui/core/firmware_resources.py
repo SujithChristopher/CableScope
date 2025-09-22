@@ -52,7 +52,7 @@ float TS;
 // Communication variables
 bool dataReady = false;
 unsigned long lastDataTime = 0;
-const unsigned long dataInterval = 100; // Send data every 100ms
+const unsigned long dataInterval = 10; // Send data every 10ms
 
 //Torque Sensor instance
 HX711_ADC torqueSensor(torqueSensor_DOUT_PIN, torqueSensor_SCK_PIN);
@@ -151,7 +151,7 @@ void applyMotorControl() {
   motor_current = desiredTorque / 3.35;  // Calculate motor current
   
   // Limit current to safe range
-  motor_current = constrain(motor_current, -2.0, 2.0);
+  motor_current = constrain(motor_current, -2.0, 10.0);
   
   if (abs(motor_current) < 0.01) {
     // Disable motor for very small currents
