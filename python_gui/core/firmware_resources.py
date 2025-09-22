@@ -16,7 +16,7 @@ FIRMWARE_INO_CONTENT = '''#include "HX711_ADC.h"
 #define DATA_PACKET_SIZE 9  // 1 byte cmd + 4 bytes torque + 4 bytes angle
 
 // Calibration factors for torque sensor
-#define calibration_factor5 91160.52  //-842222//91160.52
+#define calibration_factor5 130433  //-842222//91160.52
 
 //Torque Sensor
 #define torqueSensor_DOUT_PIN 32
