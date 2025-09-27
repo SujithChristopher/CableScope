@@ -43,8 +43,8 @@ class MainWindow(QMainWindow):
         
         # Application state
         self.is_data_acquisition_active = False
-        self.current_data = {"torque": 0.0, "angle": 0.0}
-        self.data_buffer = {"torque": [], "angle": [], "time": []}
+        self.current_data = {"torque": 0.0, "angle": 0.0, "pwm": 0.0}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
         self.buffer_size = 1000
         self._loading_configuration = False  # Flag to prevent recursion
         
@@ -488,7 +488,7 @@ class MainWindow(QMainWindow):
     
     def clear_data_buffer(self):
         """Clear the data buffer"""
-        self.data_buffer = {"torque": [], "angle": [], "time": []}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
         self.control_plots_tab.clear_all_data()
         self.enhanced_status_bar.show_message("Data buffer cleared", 2000)
     
@@ -645,12 +645,14 @@ class MainWindow(QMainWindow):
             
             self.data_buffer["torque"].append(data["torque"])
             self.data_buffer["angle"].append(data["angle"])
+            self.data_buffer["pwm"].append(data.get("pwm", 0.0))  # Handle legacy data without PWM
             self.data_buffer["time"].append(current_time)
-            
+
             # Limit buffer size
             if len(self.data_buffer["torque"]) > self.buffer_size:
                 self.data_buffer["torque"] = self.data_buffer["torque"][-self.buffer_size:]
                 self.data_buffer["angle"] = self.data_buffer["angle"][-self.buffer_size:]
+                self.data_buffer["pwm"] = self.data_buffer["pwm"][-self.buffer_size:]
                 self.data_buffer["time"] = self.data_buffer["time"][-self.buffer_size:]
             
             # Update plotting tab

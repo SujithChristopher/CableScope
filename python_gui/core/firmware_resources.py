@@ -13,7 +13,7 @@ FIRMWARE_INO_CONTENT = '''#include "HX711_ADC.h"
 #define HEADER2 0xFF
 #define CMD_SET_TORQUE 0x01
 #define CMD_GET_DATA 0x02
-#define DATA_PACKET_SIZE 9  // 1 byte cmd + 4 bytes torque + 4 bytes angle
+#define DATA_PACKET_SIZE 13  // 1 byte cmd + 4 bytes torque + 4 bytes angle + 4 bytes PWM
 
 // Calibration factors for torque sensor
 #define calibration_factor5 130433  //-842222//91160.52
@@ -116,30 +116,38 @@ void handleSerialCommands() {
       if (header2 == HEADER2) {
         uint8_t command = Serial.read();
         
-        if (command == CMD_SET_TORQUE && Serial.available() >= 4) {
-          // Receive desired torque as float (4 bytes)
-          union {
-            float f;
-            uint8_t bytes[4];
-          } torqueData;
-          
-          for (int i = 0; i < 4; i++) {
-            torqueData.bytes[i] = Serial.read();
+        if (command == CMD_SET_TORQUE) {
+          // Wait for all 4 torque bytes with timeout
+          unsigned long startTime = millis();
+          while (Serial.available() < 4 && millis() - startTime < 100) {
+            // Wait up to 100ms for complete torque data
           }
-          
-          desiredTorque = torqueData.f;
-          
-          // Convert torque to motor current and apply to motor
-          // Assuming direct torque-to-current mapping (you may need to adjust this)
-          motor_current = desiredTorque; // Simple 1:1 mapping, adjust as needed
-          
-          // Apply motor control immediately
-          applyMotorControl();
-          
-          // Send acknowledgment
-          Serial.write(HEADER1);
-          Serial.write(HEADER2);
-          Serial.write(0xAA); // ACK
+
+          if (Serial.available() >= 4) {
+            // Receive desired torque as float (4 bytes)
+            union {
+              float f;
+              uint8_t bytes[4];
+            } torqueData;
+
+            for (int i = 0; i < 4; i++) {
+              torqueData.bytes[i] = Serial.read();
+            }
+
+            desiredTorque = torqueData.f;
+
+            // Convert torque to motor current and apply to motor
+            // Assuming direct torque-to-current mapping (you may need to adjust this)
+            motor_current = desiredTorque; // Simple 1:1 mapping, adjust as needed
+
+            // Apply motor control immediately
+            applyMotorControl();
+
+            // Send acknowledgment after motor control is applied
+            Serial.write(HEADER1);
+            Serial.write(HEADER2);
+            Serial.write(0xAA); // ACK
+          }
         }
       }
     }
@@ -177,48 +185,59 @@ void controlMotor() {
 
 // Send data packet to Python
 void sendDataPacket() {
-  // Create data packet: Header(2) + Size(1) + Data(9) + Checksum(1)
-  uint8_t packet[13];
-  
+  // Create data packet: Header(2) + Size(1) + Data(13) + Checksum(1)
+  uint8_t packet[17];
+
   packet[0] = HEADER1;
   packet[1] = HEADER2;
   packet[2] = DATA_PACKET_SIZE; // Size of data + checksum
   packet[3] = CMD_GET_DATA;     // Command type
-  
+
   // Pack torque as float (4 bytes)
   union {
     float f;
     uint8_t bytes[4];
   } torqueData;
   torqueData.f = TS;
-  
+
   for (int i = 0; i < 4; i++) {
     packet[4 + i] = torqueData.bytes[i];
   }
-  
+
   // Pack angle as float (4 bytes)
   union {
     float f;
     uint8_t bytes[4];
   } angleData;
   angleData.f = Theta;
-  
+
   for (int i = 0; i < 4; i++) {
     packet[8 + i] = angleData.bytes[i];
   }
-  
+
+  // Pack PWM as float (4 bytes)
+  union {
+    float f;
+    uint8_t bytes[4];
+  } pwmData;
+  pwmData.f = pwm_value;
+
+  for (int i = 0; i < 4; i++) {
+    packet[12 + i] = pwmData.bytes[i];
+  }
+
   // Calculate checksum
   uint8_t checksum = 0;
-  for (int i = 2; i < 12; i++) {
+  for (int i = 2; i < 16; i++) {
     checksum += packet[i];
   }
   checksum = (~checksum) + 1; // Two's complement
-  
+
   // Add checksum
-  packet[12] = checksum;
-  
+  packet[16] = checksum;
+
   // Send packet
-  Serial.write(packet, 13);
+  Serial.write(packet, 17);
 }
 
 // Function to read encoder angle in degrees with overflow handling

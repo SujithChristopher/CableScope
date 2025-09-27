@@ -20,7 +20,7 @@ class SerialCommunicationManager(QObject):
     HEADER2 = 0xFF
     CMD_SET_TORQUE = 0x01
     CMD_GET_DATA = 0x02
-    DATA_PACKET_SIZE = 9  # 1 byte cmd + 4 bytes torque + 4 bytes angle
+    DATA_PACKET_SIZE = 13  # 1 byte cmd + 4 bytes torque + 4 bytes angle + 4 bytes PWM
     ACK_BYTE = 0xAA
     
     # Signals
@@ -314,7 +314,7 @@ class SerialCommunicationManager(QObject):
         
         try:
             # Check if enough data is available
-            if self.serial_port.in_waiting < 12:  # Full packet size
+            if self.serial_port.in_waiting < 16:  # Full packet size (header + size + data + checksum)
                 return None
             
             # Read and verify headers
@@ -348,18 +348,22 @@ class SerialCommunicationManager(QObject):
             # Extract angle (4 bytes)
             angle_bytes = remaining_data[5:9]
             angle = struct.unpack('<f', angle_bytes)[0]
-            
+
+            # Extract PWM (4 bytes)
+            pwm_bytes = remaining_data[9:13]
+            pwm = struct.unpack('<f', pwm_bytes)[0]
+
             # Verify checksum (must match firmware calculation)
-            # Firmware calculates checksum for packet[2] through packet[11] (bytes 2-11)
+            # Firmware calculates checksum for packet[2] through packet[15] (bytes 2-15)
             # This corresponds to: packet_size + remaining_data[:-1]
-            received_checksum = remaining_data[9]  # Checksum is at index 9 (10th byte)
+            received_checksum = remaining_data[13]  # Checksum is at index 13 (14th byte)
             calculated_checksum = 0
-            
+
             # Add packet size byte (packet[2] in firmware)
             calculated_checksum += packet_size
-            
-            # Add remaining data bytes except the checksum itself (packet[3] through packet[11])
-            for byte in remaining_data[:9]:  # First 9 bytes (command + torque + angle)
+
+            # Add remaining data bytes except the checksum itself (packet[3] through packet[15])
+            for byte in remaining_data[:13]:  # First 13 bytes (command + torque + angle + pwm)
                 calculated_checksum += byte
                 
             calculated_checksum = (~calculated_checksum + 1) & 0xFF  # Two's complement
@@ -367,17 +371,17 @@ class SerialCommunicationManager(QObject):
             if received_checksum != calculated_checksum:
                 print(f"DEBUG: Checksum mismatch - received: 0x{received_checksum:02X}, calculated: 0x{calculated_checksum:02X}")
                 print(f"DEBUG: Packet size: 0x{packet_size:02X}")
-                print(f"DEBUG: Data bytes: {' '.join(f'0x{b:02X}' for b in remaining_data[:9])}")
+                print(f"DEBUG: Data bytes: {' '.join(f'0x{b:02X}' for b in remaining_data[:13])}")
                 self.error_occurred.emit(f"Data packet checksum verification failed (got 0x{received_checksum:02X}, expected 0x{calculated_checksum:02X})")
                 return None
             else:
                 print("DEBUG: Checksum verification passed")
-            
+
             # Update statistics
             self._data_count += 1
             self.last_data_time = time.time()
-            
-            return {"torque": float(torque), "angle": float(angle)}
+
+            return {"torque": float(torque), "angle": float(angle), "pwm": float(pwm)}
             
         except struct.error as e:
             self.error_occurred.emit(f"Error unpacking data: {e}")

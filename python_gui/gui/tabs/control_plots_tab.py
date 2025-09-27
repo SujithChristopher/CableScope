@@ -53,7 +53,7 @@ class ControlPlotsTab(QWidget):
         self.buffer_size = 1000
         
         # Data storage
-        self.data_buffer = {"torque": [], "angle": [], "time": []}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
         self.plot_data = {"torque": {"x": [], "y": []}, "angle": {"x": [], "y": []}}
         
         # Recording state
@@ -692,7 +692,7 @@ class ControlPlotsTab(QWidget):
                 self.recording_writer = csv.writer(self.recording_file)
                 
                 # Write header
-                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Desired Torque (Nm)', 'Actual Torque (Nm)', 'Angle (deg)'])
+                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Desired Torque (Nm)', 'Actual Torque (Nm)', 'Angle (deg)', 'PWM Value'])
                 
                 self.is_recording = True
                 self.recording_start_time = time.time()
@@ -745,14 +745,16 @@ class ControlPlotsTab(QWidget):
             relative_time = current_time - self.recording_start_time
             torque = self.data_buffer["torque"][latest_idx]
             angle = self.data_buffer["angle"][latest_idx]
-            
+            pwm = self.data_buffer.get("pwm", [0.0])[latest_idx]  # Handle legacy data without PWM
+
             # Write to CSV
             self.recording_writer.writerow([
                 datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
                 f"{relative_time:.3f}",
                 f"{self.current_desired_torque:.6f}",
                 f"{torque:.6f}",
-                f"{angle:.3f}"
+                f"{angle:.3f}",
+                f"{pwm:.3f}"
             ])
             
         except Exception as e:
@@ -865,7 +867,7 @@ class ControlPlotsTab(QWidget):
     
     def clear_all_data(self):
         """Clear all plot data"""
-        self.data_buffer = {"torque": [], "angle": [], "time": []}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
         self.plot_data = {"torque": {"x": [], "y": []}, "angle": {"x": [], "y": []}}
         
         # Clear plot curves
