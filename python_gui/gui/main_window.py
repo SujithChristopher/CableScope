@@ -43,8 +43,8 @@ class MainWindow(QMainWindow):
         
         # Application state
         self.is_data_acquisition_active = False
-        self.current_data = {"torque": 0.0, "angle": 0.0, "pwm": 0.0}
-        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
+        self.current_data = {"torque": 0.0, "angle": 0.0, "pwm": 0.0, "millis": 0.0, "desired_torque": 0.0}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "millis": [], "desired_torque": [], "time": []}
         self.buffer_size = 1000
         self._loading_configuration = False  # Flag to prevent recursion
         
@@ -311,30 +311,53 @@ class MainWindow(QMainWindow):
         """Start data acquisition"""
         if self.is_data_acquisition_active:
             return
-        
+
         if not self.serial_manager.is_connected:
-            QMessageBox.warning(self, "Connection Required", 
+            QMessageBox.warning(self, "Connection Required",
                               "Please connect to a device before starting data acquisition.")
             return
-        
+
         try:
             # Start data reading
             if self.serial_manager.start_data_reading():
                 self.is_data_acquisition_active = True
-                
+
                 # Update UI
                 self.start_action.setEnabled(False)
                 self.stop_action.setEnabled(True)
                 self.control_plots_tab.set_data_acquisition_active(True)
-                
+
                 # Update status
                 self.enhanced_status_bar.set_data_acquisition_status(True)
-                self.enhanced_status_bar.show_message("Data acquisition started", 3000)
-                
+
+                # For random_torque firmware: auto-start recording and send start command
+                if self.serial_manager.firmware_mode == "random_torque":
+                    # Auto-start recording with timestamp filename
+                    from datetime import datetime
+                    from pathlib import Path
+
+                    # Create recordings directory
+                    save_path = Path.home() / "CableScope" / "recordings"
+                    save_path.mkdir(parents=True, exist_ok=True)
+
+                    # Generate filename with timestamp
+                    filename = save_path / f"random_torque_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+                    # Start recording
+                    self.start_recording(str(filename))
+
+                    # Send start sequence command to firmware
+                    if self.serial_manager.send_start_sequence_command():
+                        self.enhanced_status_bar.show_message("Random torque sequence started - Recording to CSV", 5000)
+                    else:
+                        self.enhanced_status_bar.show_message("Warning: Failed to start sequence, but recording...", 5000)
+                else:
+                    self.enhanced_status_bar.show_message("Data acquisition started", 3000)
+
                 self.error_handler.log_info("Data acquisition started")
             else:
                 self.error_handler.log_error("DataAcquisition", "Failed to start data reading")
-                
+
         except Exception as e:
             self.error_handler.log_error("DataAcquisition", f"Error starting data acquisition: {e}")
     
@@ -489,7 +512,7 @@ class MainWindow(QMainWindow):
     
     def clear_data_buffer(self):
         """Clear the data buffer"""
-        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "millis": [], "desired_torque": [], "time": []}
         self.control_plots_tab.clear_all_data()
         self.enhanced_status_bar.show_message("Data buffer cleared", 2000)
     
@@ -639,14 +662,16 @@ class MainWindow(QMainWindow):
         try:
             # Update current data
             self.current_data = data.copy()
-            
+
             # Add to buffer
             import time
             current_time = time.time()
-            
+
             self.data_buffer["torque"].append(data["torque"])
             self.data_buffer["angle"].append(data["angle"])
             self.data_buffer["pwm"].append(data.get("pwm", 0.0))  # Handle legacy data without PWM
+            self.data_buffer["millis"].append(data.get("millis", 0.0))  # Handle millis from new firmware
+            self.data_buffer["desired_torque"].append(data.get("desired_torque", 0.0))  # Handle desired torque from new firmware
             self.data_buffer["time"].append(current_time)
 
             # Limit buffer size
@@ -654,14 +679,16 @@ class MainWindow(QMainWindow):
                 self.data_buffer["torque"] = self.data_buffer["torque"][-self.buffer_size:]
                 self.data_buffer["angle"] = self.data_buffer["angle"][-self.buffer_size:]
                 self.data_buffer["pwm"] = self.data_buffer["pwm"][-self.buffer_size:]
+                self.data_buffer["millis"] = self.data_buffer["millis"][-self.buffer_size:]
+                self.data_buffer["desired_torque"] = self.data_buffer["desired_torque"][-self.buffer_size:]
                 self.data_buffer["time"] = self.data_buffer["time"][-self.buffer_size:]
-            
+
             # Update plotting tab
             self.control_plots_tab.update_data(self.data_buffer)
-            
+
             # Update status bar
             self.enhanced_status_bar.increment_data_count()
-            
+
         except Exception as e:
             self.error_handler.log_error("DataProcessing", f"Error processing received data: {e}")
     

@@ -283,8 +283,9 @@ RANDOM_TORQUE_FIRMWARE_CONTENT = '''#include "HX711_ADC.h"
 // -------------------- Binary Protocol --------------------
 #define HEADER1 0xFF
 #define HEADER2 0xFF
+#define CMD_START_SEQUENCE 0x03  // Command to start the random torque sequence
 #define CMD_GET_DATA 0x02
-#define DATA_PACKET_SIZE 13  // 1 byte cmd + 4 bytes torque + 4 bytes angle + 4 bytes PWM
+#define DATA_PACKET_SIZE 21  // 1 byte cmd + 4 bytes millis + 4 bytes desired + 4 bytes actual + 4 bytes pwm + 4 bytes angle
 
 // -------------------- Torque Sensor --------------------
 #define calibration_factor1  91160.52
@@ -313,24 +314,27 @@ unsigned long lastDataTime = 0;
 const unsigned long dataInterval = 10; // Send data every 10ms
 
 // -------------------- Phase Control --------------------
-enum Phase { PHASE1_INITIAL, PHASE1_HOLD_ZERO, PHASE2_RANDOM };
-Phase currentPhase = PHASE1_INITIAL;
+enum Phase { PHASE_IDLE, PHASE_TIGHTEN, PHASE_RANDOM };
+Phase currentPhase = PHASE_IDLE;
 
-const uint32_t PHASE1_INITIAL_MS = 10000;  // 10s initial hold
-const uint32_t PHASE1_HOLD_MS    = 10000;  // 10s hold at zero
-const uint32_t PHASE2_CMD_MS     = 5000;   // 5s per random command
+const uint32_t PHASE_TIGHTEN_MS = 10000;  // 10s to tighten cable at 1 Nm
+const uint32_t PHASE_RANDOM_MS  = 10000;  // 10s per random torque command
 
-// Phase 2: Random torque commands
+// Random torque configuration
 const float RANDOM_TORQUES[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-const int NUM_RANDOM_CMDS = 10;
+const int NUM_RANDOM_CMDS = 20;  // 20 random commands
 float randomCommands[NUM_RANDOM_CMDS];
 int currentCmdIndex = 0;
 
 // Current command values
-float appliedNm     = 1.00f;
+float appliedNm     = 0.0f;  // Start at 0
 float motor_current = 0.0f;
 float pwm_value     = 0.0f;
 uint16_t duty       = 0;
+
+// Sequence control
+bool sequenceStarted = false;
+uint32_t phaseStartTime = 0;
 
 // -------------------- Helpers --------------------
 static inline long readEncRaw() { return angle.read(); }
@@ -396,22 +400,23 @@ void setup() {
   analogWriteResolution(12);
   analogReadResolution(12);
 
-  digitalWrite(enablePin, HIGH);
+  digitalWrite(enablePin, LOW);  // Start with motor disabled
   digitalWrite(directionPin, HIGH);
 
   // Initialize software zero at starting position
   softZeroEncoder();
 
-  // Set initial 1 Nm command
-  setTorqueCommand(1.00f);
-
-  // Generate random commands for Phase 2
+  // Generate random commands for later
   generateRandomCommands();
+
+  // Wait for start command from GUI
+  currentPhase = PHASE_IDLE;
+  appliedNm = 0.0f;
 }
 
 void loop() {
-  static uint32_t phaseStartTime = millis();
-  uint32_t elapsed = millis() - phaseStartTime;
+  // Handle serial commands (check for start command)
+  handleSerialCommands();
 
   // Keep torque sensor updating
   loadcell1.update();
@@ -420,45 +425,33 @@ void loop() {
   analogWrite(pwmPin, duty);
 
   // Phase state machine
+  uint32_t elapsed = millis() - phaseStartTime;
+
   switch (currentPhase) {
-    case PHASE1_INITIAL:
-      if (elapsed >= PHASE1_INITIAL_MS) {
-        // Hard-zero the encoder after 10s
-        long rawBefore = readEncRaw();
-        hardZeroEncoder();
-        long rawAfter = readEncRaw();
-
-        Serial.print("Encoder hard-zeroed. Raw before: ");
-        Serial.print(rawBefore);
-        Serial.print(" | Raw after: ");
-        Serial.print(rawAfter);
-        Serial.print(" | Reported angle: ");
-        Serial.print(angle_motor_deg(), 3);
-        Serial.println(" deg");
-        Serial.println("Holding at zero for 10s...");
-
-        currentPhase = PHASE1_HOLD_ZERO;
-        phaseStartTime = millis();
-      }
+    case PHASE_IDLE:
+      // Wait for start command from GUI
+      // Motor is disabled, just send data
       break;
 
-    case PHASE1_HOLD_ZERO:
-      if (elapsed >= PHASE1_HOLD_MS) {
-        // Transition to Phase 2
-        Serial.println("\\nPHASE 2: Random torque commands (10 commands, 5s each)");
-        Serial.println("Millis,DesiredTorque,ActualTorque,PWM,Angle");
+    case PHASE_TIGHTEN:
+      // Phase 1: Tighten cable at 1 Nm for 10 seconds
+      if (elapsed >= PHASE_TIGHTEN_MS) {
+        // After 10s, reset encoder to zero
+        hardZeroEncoder();
 
-        forceZeroAngle = false;  // Allow encoder to move freely now
+        // Start random sequence
+        forceZeroAngle = false;  // Allow encoder to move freely
         currentCmdIndex = 0;
         setTorqueCommand(randomCommands[currentCmdIndex]);
 
-        currentPhase = PHASE2_RANDOM;
+        currentPhase = PHASE_RANDOM;
         phaseStartTime = millis();
       }
       break;
 
-    case PHASE2_RANDOM:
-      if (elapsed >= PHASE2_CMD_MS) {
+    case PHASE_RANDOM:
+      // Phase 2: Apply random torques, 10s each
+      if (elapsed >= PHASE_RANDOM_MS) {
         currentCmdIndex++;
 
         if (currentCmdIndex < NUM_RANDOM_CMDS) {
@@ -467,10 +460,9 @@ void loop() {
           phaseStartTime = millis();
         } else {
           // All commands complete - disable motor
-          analogWrite(pwmPin, 410);
+          setTorqueCommand(0.0f);
           digitalWrite(enablePin, LOW);
-          Serial.println("\\nAll commands complete. Motor disabled.");
-          while(1); // Stop execution
+          currentPhase = PHASE_IDLE;
         }
       }
       break;
@@ -485,10 +477,40 @@ void loop() {
   delay(5);  // ~200 Hz service rate
 }
 
-// Send data packet using binary protocol (same as interactive firmware)
+// Handle incoming serial commands
+void handleSerialCommands() {
+  if (Serial.available() >= 3) {
+    uint8_t header1 = Serial.read();
+    if (header1 == HEADER1) {
+      uint8_t header2 = Serial.read();
+      if (header2 == HEADER2) {
+        uint8_t command = Serial.read();
+
+        if (command == CMD_START_SEQUENCE) {
+          // Start the random torque sequence
+          if (currentPhase == PHASE_IDLE) {
+            // Begin tightening phase
+            digitalWrite(enablePin, HIGH);
+            setTorqueCommand(1.0f);  // Apply 1 Nm to tighten
+            currentPhase = PHASE_TIGHTEN;
+            phaseStartTime = millis();
+
+            // Send acknowledgment
+            Serial.write(HEADER1);
+            Serial.write(HEADER2);
+            Serial.write(0xAA);  // ACK
+          }
+        }
+      }
+    }
+  }
+}
+
+// Send data packet using binary protocol with all required fields
 void sendDataPacket() {
-  // Create data packet: Header(2) + Size(1) + Data(13) + Checksum(1)
-  uint8_t packet[17];
+  // Create data packet: Header(2) + Size(1) + Data(21) + Checksum(1)
+  // Data: CMD(1) + Millis(4) + Desired(4) + Actual(4) + PWM(4) + Angle(4)
+  uint8_t packet[25];
 
   packet[0] = HEADER1;
   packet[1] = HEADER2;
@@ -498,26 +520,37 @@ void sendDataPacket() {
   float angle_deg = angle_motor_deg();
   float TS = loadcell1.getData();
 
-  // Pack actual torque as float (4 bytes)
+  // Pack millis as unsigned long converted to float (4 bytes)
   union {
     float f;
     uint8_t bytes[4];
-  } torqueData;
-  torqueData.f = TS;
+  } millisData;
+  millisData.f = (float)millis();
 
   for (int i = 0; i < 4; i++) {
-    packet[4 + i] = torqueData.bytes[i];
+    packet[4 + i] = millisData.bytes[i];
   }
 
-  // Pack angle as float (4 bytes)
+  // Pack desired torque (appliedNm) as float (4 bytes)
   union {
     float f;
     uint8_t bytes[4];
-  } angleData;
-  angleData.f = angle_deg;
+  } desiredTorqueData;
+  desiredTorqueData.f = appliedNm;
 
   for (int i = 0; i < 4; i++) {
-    packet[8 + i] = angleData.bytes[i];
+    packet[8 + i] = desiredTorqueData.bytes[i];
+  }
+
+  // Pack actual torque (TS) as float (4 bytes)
+  union {
+    float f;
+    uint8_t bytes[4];
+  } actualTorqueData;
+  actualTorqueData.f = TS;
+
+  for (int i = 0; i < 4; i++) {
+    packet[12 + i] = actualTorqueData.bytes[i];
   }
 
   // Pack PWM as float (4 bytes)
@@ -528,21 +561,32 @@ void sendDataPacket() {
   pwmData.f = pwm_value;
 
   for (int i = 0; i < 4; i++) {
-    packet[12 + i] = pwmData.bytes[i];
+    packet[16 + i] = pwmData.bytes[i];
+  }
+
+  // Pack angle as float (4 bytes)
+  union {
+    float f;
+    uint8_t bytes[4];
+  } angleData;
+  angleData.f = angle_deg;
+
+  for (int i = 0; i < 4; i++) {
+    packet[20 + i] = angleData.bytes[i];
   }
 
   // Calculate checksum
   uint8_t checksum = 0;
-  for (int i = 2; i < 16; i++) {
+  for (int i = 2; i < 24; i++) {
     checksum += packet[i];
   }
   checksum = (~checksum) + 1; // Two's complement
 
   // Add checksum
-  packet[16] = checksum;
+  packet[24] = checksum;
 
   // Send packet
-  Serial.write(packet, 17);
+  Serial.write(packet, 25);
 }
 '''
 

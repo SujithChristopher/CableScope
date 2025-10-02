@@ -712,7 +712,7 @@ class ControlPlotsTab(QWidget):
                 self.recording_writer = csv.writer(self.recording_file)
                 
                 # Write header
-                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Desired Torque (Nm)', 'Actual Torque (Nm)', 'Angle (deg)', 'PWM Value'])
+                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Millis', 'Desired Torque (Nm)', 'Actual Torque (Nm)', 'Angle (deg)', 'PWM Value'])
                 
                 self.is_recording = True
                 self.recording_start_time = time.time()
@@ -756,22 +756,25 @@ class ControlPlotsTab(QWidget):
         """Record current data point"""
         if not self.data_buffer["time"]:
             return
-        
+
         try:
             # Get the most recent data point
             latest_idx = -1
-            
+
             current_time = self.data_buffer["time"][latest_idx]
             relative_time = current_time - self.recording_start_time
             torque = self.data_buffer["torque"][latest_idx]
             angle = self.data_buffer["angle"][latest_idx]
             pwm = self.data_buffer.get("pwm", [0.0])[latest_idx]  # Handle legacy data without PWM
+            millis = self.data_buffer.get("millis", [0.0])[latest_idx]  # Get millis from firmware
+            desired_torque = self.data_buffer.get("desired_torque", [self.current_desired_torque])[latest_idx]  # Get desired from firmware or use UI value
 
             # Write to CSV
             self.recording_writer.writerow([
                 datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
                 f"{relative_time:.3f}",
-                f"{self.current_desired_torque:.6f}",
+                f"{millis:.0f}",  # Millis as integer
+                f"{desired_torque:.6f}",
                 f"{torque:.6f}",
                 f"{angle:.3f}",
                 f"{pwm:.3f}"
