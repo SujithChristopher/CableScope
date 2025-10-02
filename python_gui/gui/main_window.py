@@ -206,13 +206,14 @@ class MainWindow(QMainWindow):
         self.serial_manager.error_occurred.connect(self.on_serial_error)
         self.serial_manager.ports_updated.connect(self.on_ports_updated)
         self.serial_manager.command_acknowledged.connect(self.on_command_acknowledged)
-        
+        self.serial_manager.firmware_mode_detected.connect(self.on_firmware_mode_detected)
+
         print("DEBUG: Serial manager signals connected")
-        
+
         # Error handler connections
         self.error_handler.error_occurred.connect(self.on_error_occurred)
         self.error_handler.warning_occurred.connect(self.on_warning_occurred)
-        
+
         # Control & Plots tab connections
         self.control_plots_tab.torque_command_requested.connect(self.send_torque_command)
         self.control_plots_tab.connection_requested.connect(self.connect_to_port)
@@ -224,7 +225,7 @@ class MainWindow(QMainWindow):
         self.control_plots_tab.recording_start_requested.connect(self.start_recording)
         self.control_plots_tab.recording_stop_requested.connect(self.stop_recording)
         self.control_plots_tab.refresh_ports_requested.connect(self.serial_manager.force_scan_ports)
-        
+
         # Connect command acknowledgment to UI feedback
         self.serial_manager.command_acknowledged.connect(self.control_plots_tab.on_command_acknowledged)
         
@@ -680,7 +681,18 @@ class MainWindow(QMainWindow):
     def on_command_acknowledged(self):
         """Handle command acknowledgment"""
         self.enhanced_status_bar.set_last_command_time()
-    
+
+    @Slot(str)
+    def on_firmware_mode_detected(self, mode: str):
+        """Handle firmware mode detection"""
+        print(f"DEBUG: Firmware mode detected: {mode}")
+        # Update control tab with firmware mode
+        if hasattr(self, 'control_plots_tab'):
+            self.control_plots_tab.set_firmware_mode(mode)
+        # Show notification to user
+        mode_display = "Interactive Control" if mode == "interactive" else "Random Torque (Autonomous)"
+        self.enhanced_status_bar.show_message(f"Firmware Mode: {mode_display}", 5000)
+
     @Slot(str, str)
     def on_error_occurred(self, error_type: str, message: str):
         """Handle error from error handler"""

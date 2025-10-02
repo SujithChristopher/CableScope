@@ -14,7 +14,7 @@ import numpy as np
 
 class SerialCommunicationManager(QObject):
     """Manages serial communication with the motor control firmware"""
-    
+
     # Communication protocol constants
     HEADER1 = 0xFF
     HEADER2 = 0xFF
@@ -22,28 +22,34 @@ class SerialCommunicationManager(QObject):
     CMD_GET_DATA = 0x02
     DATA_PACKET_SIZE = 13  # 1 byte cmd + 4 bytes torque + 4 bytes angle + 4 bytes PWM
     ACK_BYTE = 0xAA
-    
+
     # Signals
     connection_changed = Signal(bool)  # Connected/disconnected
     data_received = Signal(dict)       # {"torque": float, "angle": float}
     error_occurred = Signal(str)       # Error message
     ports_updated = Signal(list)       # Available ports list
     command_acknowledged = Signal()     # Command ACK received
-    
+    firmware_mode_detected = Signal(str)  # "interactive" or "random_torque" mode detected
+
     def __init__(self):
         super().__init__()
-        
+
         # Serial connection
         self.serial_port: Optional[serial.Serial] = None
         self.is_connected = False
         self.current_port = ""
         self.baud_rate = 115200
         self.timeout = 1.0
-        
+
         # Communication state
         self.last_torque_command = 0.0
         self.last_data_time = time.time()
         self.data_rate = 0.0
+
+        # Firmware mode detection (both use binary protocol, but behave differently)
+        self.firmware_mode = "interactive"  # "interactive" or "random_torque"
+        self.mode_detection_complete = False
+        self.ack_timeout_count = 0  # Count ACK timeouts to detect random_torque firmware
         
         # Port scanning timer
         self.port_scan_timer = QTimer()
@@ -198,21 +204,39 @@ class SerialCommunicationManager(QObject):
             # Test connection by sending a small torque command
             print("DEBUG: Testing communication with zero torque command...")
             test_success = self.send_torque_command(0.0, force_send=True)
-            
-            if test_success:
-                print("DEBUG: Communication test successful")
-                self.is_connected = True
-                self.current_port = port
-                self.baud_rate = baud_rate
-                self.timeout = timeout
-                self.connection_changed.emit(True)
-                return True
+
+            # Check if this is random_torque firmware (doesn't respond to commands)
+            if not test_success:
+                print("DEBUG: No ACK received - checking if this is random_torque firmware...")
+                # Wait a moment for potential data packets
+                time.sleep(0.5)
+                # If we received data without sending commands, it's random_torque firmware
+                if self.serial_port.in_waiting > 10:
+                    print("DEBUG: Detected random_torque firmware (autonomous mode)")
+                    self.firmware_mode = "random_torque"
+                    self.mode_detection_complete = True
+                    test_success = True  # Mark as successful connection
+                    self.firmware_mode_detected.emit("random_torque")
+                else:
+                    print("DEBUG: Communication test failed - no response")
+                    self.serial_port.close()
+                    self.serial_port = None
+                    self.error_occurred.emit(f"Failed to communicate with device on {port}")
+                    return False
             else:
-                print("DEBUG: Communication test failed")
-                self.serial_port.close()
-                self.serial_port = None
-                self.error_occurred.emit(f"Failed to communicate with device on {port}")
-                return False
+                print("DEBUG: ACK received - interactive firmware detected")
+                self.firmware_mode = "interactive"
+                self.mode_detection_complete = True
+                self.firmware_mode_detected.emit("interactive")
+
+            # Connection successful
+            print("DEBUG: Communication test successful")
+            self.is_connected = True
+            self.current_port = port
+            self.baud_rate = baud_rate
+            self.timeout = timeout
+            self.connection_changed.emit(True)
+            return True
             
         except serial.SerialException as e:
             print(f"DEBUG: Serial exception: {e}")
@@ -227,24 +251,36 @@ class SerialCommunicationManager(QObject):
         """Disconnect from current port"""
         if self.serial_port and self.serial_port.is_open:
             try:
-                # Send zero torque command before disconnecting
-                self.send_torque_command(0.0)
-                time.sleep(0.1)
+                # Send zero torque command before disconnecting (only for interactive mode)
+                if self.firmware_mode == "interactive":
+                    self.send_torque_command(0.0)
+                    time.sleep(0.1)
                 self.serial_port.close()
             except Exception as e:
                 self.error_occurred.emit(f"Error closing port: {e}")
-        
+
         self.serial_port = None
         self.is_connected = False
         self.current_port = ""
+
+        # Reset firmware mode detection for next connection
+        self.firmware_mode = "interactive"
+        self.mode_detection_complete = False
+        self.ack_timeout_count = 0
+
         self.connection_changed.emit(False)
     
     def send_torque_command(self, torque: float, force_send: bool = False) -> bool:
-        """Send torque command to the firmware"""
+        """Send torque command to the firmware (only for interactive mode)"""
+        # Random torque firmware doesn't accept/respond to torque commands
+        if self.firmware_mode == "random_torque":
+            print("DEBUG: Torque commands not supported in random_torque mode")
+            return True  # Return True to avoid errors
+
         if not force_send and (not self.is_connected or not self.serial_port):
             print(f"DEBUG: Cannot send torque command - connected: {self.is_connected}, port: {self.serial_port}")
             return False
-        
+
         if not self.serial_port:
             print("DEBUG: No serial port available")
             return False
@@ -308,19 +344,19 @@ class SerialCommunicationManager(QObject):
             return False
     
     def read_data_packet(self) -> Optional[Dict[str, float]]:
-        """Read a data packet from the firmware"""
+        """Read a data packet from the firmware (binary protocol)"""
         if not self.is_connected or not self.serial_port:
             return None
-        
+
         try:
             # Check if enough data is available
             if self.serial_port.in_waiting < 16:  # Full packet size (header + size + data + checksum)
                 return None
-            
+
             # Read and verify headers
             header_data = self.serial_port.read(3)
-            if (len(header_data) != 3 or 
-                header_data[0] != self.HEADER1 or 
+            if (len(header_data) != 3 or
+                header_data[0] != self.HEADER1 or
                 header_data[1] != self.HEADER2):
                 # Clear buffer and try again
                 self.serial_port.reset_input_buffer()

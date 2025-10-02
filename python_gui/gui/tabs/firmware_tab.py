@@ -335,30 +335,40 @@ class FirmwareTab(QWidget):
         """Create firmware selection group"""
         group = QGroupBox("Firmware Selection")
         layout = QGridLayout(group)
-        
+
+        # Firmware type selection
+        layout.addWidget(QLabel("Firmware Type:"), 0, 0)
+        self.firmware_type_combo = QComboBox()
+        from core.firmware_resources import get_available_firmware_types, get_firmware_display_name
+        firmware_types = get_available_firmware_types()
+        for fw_type in firmware_types:
+            self.firmware_type_combo.addItem(get_firmware_display_name(fw_type), fw_type)
+        self.firmware_type_combo.currentIndexChanged.connect(self.on_firmware_type_changed)
+        layout.addWidget(self.firmware_type_combo, 0, 1, 1, 2)
+
         # Firmware path
-        layout.addWidget(QLabel("Firmware File:"), 0, 0)
+        layout.addWidget(QLabel("Firmware File:"), 1, 0)
         self.firmware_path_edit = QLineEdit()
         self.firmware_path_edit.setReadOnly(True)
-        layout.addWidget(self.firmware_path_edit, 0, 1)
-        
+        layout.addWidget(self.firmware_path_edit, 1, 1)
+
         # Browse button
         self.browse_firmware_button = QPushButton("Browse")
         self.browse_firmware_button.clicked.connect(self.browse_firmware)
-        layout.addWidget(self.browse_firmware_button, 0, 2)
-        
+        layout.addWidget(self.browse_firmware_button, 1, 2)
+
         # Use embedded firmware checkbox
         self.use_default_checkbox = QCheckBox("Use embedded firmware (recommended)")
         self.use_default_checkbox.setChecked(True)
         self.use_default_checkbox.toggled.connect(self.on_use_default_toggled)
-        layout.addWidget(self.use_default_checkbox, 1, 0, 1, 3)
-        
+        layout.addWidget(self.use_default_checkbox, 2, 0, 1, 3)
+
         # Info label about automatic setup
         info_label = QLabel("Note: First upload will automatically install Teensy platform and required libraries")
         info_label.setStyleSheet("color: #666666; font-style: italic; font-size: 9px;")
         info_label.setWordWrap(True)
-        layout.addWidget(info_label, 2, 0, 1, 3)
-        
+        layout.addWidget(info_label, 3, 0, 1, 3)
+
         return group
     
     def create_board_group(self) -> QGroupBox:
@@ -499,28 +509,34 @@ class FirmwareTab(QWidget):
         """Set default firmware path using embedded firmware"""
         try:
             self.use_embedded_firmware = True
-            
+
+            # Get selected firmware type
+            firmware_type = self.firmware_type_combo.currentData()
+            if not firmware_type:
+                firmware_type = "combined"  # Default fallback
+
             # Create temporary firmware directory with proper Arduino sketch name
             if not self.temp_firmware_dir:
                 # Use a consistent directory name for Arduino CLI compatibility
                 temp_base = tempfile.mkdtemp(prefix="cablescope_temp_")
                 self.temp_firmware_dir = os.path.join(temp_base, "cablescope_firmware")
-            
-            # Create firmware files from embedded resources
-            created_files = create_firmware_files(self.temp_firmware_dir)
-            
+
+            # Create firmware files from embedded resources with selected type
+            created_files = create_firmware_files(self.temp_firmware_dir, firmware_type)
+
             # Set path to the main firmware.ino file
             self.firmware_path = created_files["firmware.ino"]
-            self.firmware_path_edit.setText("[Embedded Firmware]")
-            self.add_log_message(f"Using embedded firmware (extracted to temporary location)")
-            
+            firmware_display_name = self.firmware_type_combo.currentText()
+            self.firmware_path_edit.setText(f"[Embedded: {firmware_display_name}]")
+            self.add_log_message(f"Using embedded firmware: {firmware_display_name}")
+
         except Exception as e:
             self.add_log_message(f"Error setting up embedded firmware: {e}")
             # Fallback: try to use external firmware if it exists
             try:
                 current_dir = Path(__file__).parent.parent.parent
                 fallback_path = current_dir.parent / "firmware" / "firmware.ino"
-                
+
                 if fallback_path.exists():
                     self.firmware_path = str(fallback_path)
                     self.firmware_path_edit.setText(str(fallback_path))
@@ -528,7 +544,7 @@ class FirmwareTab(QWidget):
                     self.add_log_message(f"Fallback: Using external firmware: {fallback_path}")
                 else:
                     self.add_log_message(f"Error: No firmware available (embedded failed, external not found)")
-                    
+
             except Exception as fallback_error:
                 self.add_log_message(f"Error: Firmware setup failed completely: {fallback_error}")
     
@@ -639,13 +655,23 @@ class FirmwareTab(QWidget):
         if checked:
             self.set_default_firmware_path()
             self.browse_firmware_button.setEnabled(False)
+            self.firmware_type_combo.setEnabled(True)
         else:
             self.browse_firmware_button.setEnabled(True)
+            self.firmware_type_combo.setEnabled(False)
             self.use_embedded_firmware = False
             # Clear current firmware path when switching to external
             if self.firmware_path_edit.text() == "[Embedded Firmware]":
                 self.firmware_path_edit.setText("")
                 self.firmware_path = ""
+
+    @Slot(int)
+    def on_firmware_type_changed(self, index: int):
+        """Handle firmware type selection change"""
+        if self.use_embedded_firmware:
+            self.set_default_firmware_path()
+            firmware_type = self.firmware_type_combo.currentData()
+            self.add_log_message(f"Switched to firmware type: {self.firmware_type_combo.currentText()}")
     
     @Slot()
     def browse_arduino_cli(self):

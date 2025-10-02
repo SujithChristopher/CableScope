@@ -37,7 +37,7 @@ class ControlPlotsTab(QWidget):
     
     def __init__(self):
         super().__init__()
-        
+
         # Control state variables
         self.is_connected = False
         self.is_data_acquisition_active = False
@@ -46,16 +46,19 @@ class ControlPlotsTab(QWidget):
         self.max_torque = 40.0
         self.torque_step = 0.1
         self.available_ports = []
-        
+
+        # Firmware mode
+        self.firmware_mode = "interactive"  # "interactive" or "random_torque"
+
         # Plot configuration
         self.time_window = 10.0
         self.update_rate = 10  # 100Hz plot updates
         self.buffer_size = 1000
-        
+
         # Data storage
-        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": [], "desired_torque": [], "millis": []}
         self.plot_data = {"torque": {"x": [], "y": []}, "angle": {"x": [], "y": []}}
-        
+
         # Recording state
         self.is_recording = False
         self.recording_file = None
@@ -429,23 +432,40 @@ class ControlPlotsTab(QWidget):
     def update_ui_state(self):
         """Update UI state based on current conditions"""
         # Connection-dependent controls
-        self.send_torque_button.setEnabled(self.is_connected)
-        self.torque_spinbox.setEnabled(self.is_connected)
-        self.torque_slider.setEnabled(self.is_connected)
+        # In random_torque mode, torque controls are disabled (firmware is autonomous)
+        torque_controls_enabled = self.is_connected and self.firmware_mode == "interactive"
+
+        self.send_torque_button.setEnabled(torque_controls_enabled)
+        self.torque_spinbox.setEnabled(torque_controls_enabled)
+        self.torque_slider.setEnabled(torque_controls_enabled)
         self.start_data_button.setEnabled(self.is_connected and not self.is_data_acquisition_active)
         self.stop_data_button.setEnabled(self.is_connected and self.is_data_acquisition_active)
-        
+
         # Connection button states
         self.connect_button.setEnabled(not self.is_connected and len(self.available_ports) > 0)
         self.disconnect_button.setEnabled(self.is_connected)
-        
-        # Emergency controls are always enabled when connected
-        self.emergency_stop_button.setEnabled(self.is_connected)
-        self.zero_torque_button.setEnabled(self.is_connected)
-        
+
+        # Emergency controls - only for interactive mode
+        self.emergency_stop_button.setEnabled(torque_controls_enabled)
+        self.zero_torque_button.setEnabled(torque_controls_enabled)
+
         # Recording controls
         self.start_recording_button.setEnabled(self.is_data_acquisition_active and not self.is_recording)
         self.stop_recording_button.setEnabled(self.is_recording)
+
+    def set_firmware_mode(self, mode: str):
+        """Set firmware mode and update UI accordingly"""
+        self.firmware_mode = mode
+        print(f"DEBUG: Firmware mode set to: {mode}")
+
+        # Update torque control group title to indicate mode
+        if hasattr(self, 'torque_control_group'):
+            if mode == "random_torque":
+                self.torque_control_group.setTitle("Torque Control (Disabled - Autonomous Mode)")
+            else:
+                self.torque_control_group.setTitle("Torque Control")
+
+        self.update_ui_state()
     
     # Configuration methods
     def load_configuration(self, config: Dict[str, Any]):
