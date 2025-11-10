@@ -201,10 +201,10 @@ class PWMOnlyTab(QWidget):
         # Plot configuration
         self.time_window = 30.0  # Show 30 seconds of data
 
-        # Available firmware types
+        # Available firmware types mapped to firmware_resources types
         self.firmware_types = {
-            "PWM Constant (700 for 24h)": "PWM_Constant",
-            "PWM On/Off (800/410, 5s each)": "PWM_On_Off"
+            "PWM Constant (700 for 24h)": "pwm_constant",
+            "PWM On/Off (800/410, 5s each)": "pwm_on_off"
         }
 
         self.setup_ui()
@@ -593,11 +593,32 @@ class PWMOnlyTab(QWidget):
         firmware_name = self.firmware_combo.currentText()
         firmware_type = self.firmware_types[firmware_name]
 
-        # Get firmware path
-        firmware_path = Path(__file__).parent.parent.parent.parent / "firmwares" / firmware_type
+        # Create temporary firmware directory using embedded resources
+        try:
+            from core.firmware_resources import create_firmware_files
+            import tempfile
 
-        if not firmware_path.exists():
-            QMessageBox.warning(self, "Upload Error", f"Firmware directory not found: {firmware_path}")
+            # Create temp directory
+            temp_dir = tempfile.mkdtemp(prefix="pwm_firmware_")
+
+            # Get the firmware type directory name for Arduino CLI
+            if firmware_type == "pwm_constant":
+                dir_name = "PWM_Constant"
+            elif firmware_type == "pwm_on_off":
+                dir_name = "PWM_On_Off"
+            else:
+                dir_name = "pwm_firmware"
+
+            firmware_path = Path(temp_dir) / dir_name
+
+            # Create firmware files from embedded resources
+            created_files = create_firmware_files(str(firmware_path), firmware_type)
+
+            self.add_log(f"Created temporary firmware: {firmware_path}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Upload Error", f"Failed to create firmware: {e}")
+            self.add_log(f"Error creating firmware: {e}")
             return
 
         # Get port

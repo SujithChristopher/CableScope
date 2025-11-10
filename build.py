@@ -29,16 +29,16 @@ def check_dependencies():
     
     # Check Python version
     if sys.version_info < (3, 8):
-        print("❌ Python 3.8+ required")
+        print("[FAIL] Python 3.8+ required")
         return False
-    print(f"✅ Python {sys.version.split()[0]}")
-    
+    print(f"[OK] Python {sys.version.split()[0]}")
+
     # Check if we can import required modules
     try:
         import PyInstaller
-        print(f"✅ PyInstaller {PyInstaller.__version__}")
+        print(f"[OK] PyInstaller {PyInstaller.__version__}")
     except ImportError:
-        print("❌ PyInstaller not found. Install with: pip install pyinstaller")
+        print("[FAIL] PyInstaller not found. Install with: pip install pyinstaller")
         return False
     
     return True
@@ -47,9 +47,9 @@ def install_requirements():
     """Install Python requirements"""
     print("\nInstalling requirements...")
     requirements_path = Path("python_gui") / "requirements.txt"
-    
+
     if not requirements_path.exists():
-        print(f"❌ Requirements file not found: {requirements_path}")
+        print(f"[FAIL] Requirements file not found: {requirements_path}")
         return False
     
     cmd = [sys.executable, "-m", "pip", "install", "-r", str(requirements_path)]
@@ -92,9 +92,9 @@ def build_executable():
     
     gui_dir = Path("python_gui")
     spec_file = gui_dir / "cablescope.spec"
-    
+
     if not spec_file.exists():
-        print(f"❌ Spec file not found: {spec_file}")
+        print(f"[FAIL] Spec file not found: {spec_file}")
         return False
     
     cmd = [sys.executable, "-m", "PyInstaller", str(spec_file), "--clean", "--noconfirm"]
@@ -119,7 +119,7 @@ def create_archive():
     
     dist_dir = Path("python_gui") / "dist" / "CableScope"
     if not dist_dir.exists():
-        print(f"❌ Distribution directory not found: {dist_dir}")
+        print(f"[FAIL] Distribution directory not found: {dist_dir}")
         return False
     
     # Create archive name
@@ -146,10 +146,10 @@ def create_archive():
     
     if Path(archive_path).exists():
         file_size = Path(archive_path).stat().st_size / (1024*1024)  # MB
-        print(f"✅ Created {archive_path} ({file_size:.1f} MB)")
+        print(f"[OK] Created {archive_path} ({file_size:.1f} MB)")
         return True
     else:
-        print(f"❌ Failed to create {archive_path}")
+        print(f"[FAIL] Failed to create {archive_path}")
         return False
 
 def verify_build():
@@ -165,19 +165,19 @@ def verify_build():
         executable = dist_dir / "CableScope"
     
     if not executable.exists():
-        print(f"❌ Executable not found: {executable}")
+        print(f"[FAIL] Executable not found: {executable}")
         return False
-    
-    print(f"✅ Executable found: {executable}")
-    
+
+    print(f"[OK] Executable found: {executable}")
+
     # Note: Firmware is now embedded in Python code, no external files needed
-    print(f"✅ Firmware embedded in application (no external files required)")
+    print(f"[OK] Firmware embedded in application (no external files required)")
     
     return True
 
 def main():
     """Main build process"""
-    print("🔧 CableScope Local Build Script")
+    print("CableScope Local Build Script")
     print("=" * 40)
     
     # Change to project root
@@ -199,13 +199,13 @@ def main():
         print(f"\n{'='*20} {step_name} {'='*20}")
         
         if not step_func():
-            print(f"❌ Failed at step: {step_name}")
+            print(f"[FAIL] Failed at step: {step_name}")
             sys.exit(1)
-    
+
     print("\n" + "="*60)
-    print("🎉 Build completed successfully!")
-    print("📦 Distribution files created in current directory")
-    print("\n💡 To test the executable:")
+    print("Build completed successfully!")
+    print("Distribution files created in current directory")
+    print("\nTo test the executable:")
     print("   1. Extract the archive")
     print("   2. Run the CableScope executable")
     print("   3. Check that Arduino CLI auto-download works")

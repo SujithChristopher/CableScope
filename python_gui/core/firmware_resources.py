@@ -590,13 +590,282 @@ void sendDataPacket() {
 }
 '''
 
+# PWM Constant firmware (24-hour test at constant PWM 700)
+PWM_CONSTANT_FIRMWARE_CONTENT = '''#include <Encoder.h>
+
+// -------------------- Encoder --------------------
+#define ENC_A          27
+#define ENC_B          28
+#define ENC_MAXCOUNT   (4 * 4096 * 53)
+#define ENC_TO_DEG     (0.25f * 0.001658f)
+
+Encoder encoder(ENC_A, ENC_B);
+long encoderZeroOffset = 0;
+
+// -------------------- Motor Driver Pins --------------------
+const int PIN_PWM    = 8;
+const int PIN_ENABLE = 9;
+const int PIN_DIR    = 10;
+
+// -------------------- Timing --------------------
+const uint32_t RUN_TIME_MS = 86400000UL;  // 24 hours in milliseconds
+
+// -------------------- PWM Value --------------------
+const int CONSTANT_PWM = 700;  // Constant PWM value to apply for 24 hours
+
+// -------------------- Current State --------------------
+uint32_t startTime = 0;
+uint16_t pwmDuty = 410;
+
+// ======================================================
+// ENCODER FUNCTIONS
+// ======================================================
+
+float getAngleDeg() {
+  long count = encoder.read() - encoderZeroOffset;
+
+  // Handle wraparound
+  if (count >= ENC_MAXCOUNT) {
+    encoderZeroOffset += ENC_MAXCOUNT;
+    count -= ENC_MAXCOUNT;
+  } else if (count <= -ENC_MAXCOUNT) {
+    encoderZeroOffset -= ENC_MAXCOUNT;
+    count += ENC_MAXCOUNT;
+  }
+
+  return ENC_TO_DEG * count;
+}
+
+// ======================================================
+// PWM FUNCTIONS
+// ======================================================
+
+void setPWM(uint16_t pwm) {
+  pwmDuty = constrain(pwm, 410, 3686);
+  analogWrite(PIN_PWM, pwmDuty);
+}
+
+// ======================================================
+// SETUP
+// ======================================================
+
+void setup() {
+  Serial.begin(9600);
+
+  // Initialize motor pins
+  pinMode(PIN_PWM, OUTPUT);
+  pinMode(PIN_ENABLE, OUTPUT);
+  pinMode(PIN_DIR, OUTPUT);
+  pinMode(ENC_A, INPUT_PULLUP);
+  pinMode(ENC_B, INPUT_PULLUP);
+
+  analogWriteResolution(12);
+  analogReadResolution(12);
+
+  // Motor OFF during initialization
+  digitalWrite(PIN_ENABLE, LOW);
+  digitalWrite(PIN_DIR, HIGH);
+  analogWrite(PIN_PWM, 410);
+
+  // Print configuration
+  Serial.print("Constant PWM: ");
+  Serial.print(CONSTANT_PWM);
+  Serial.println(" for 24 hours");
+  Serial.println("Sampling rate: 10 Hz");
+
+  Serial.println("\\n=== Applying constant PWM 700 for 24 hours ===");
+  Serial.println("PWM,AngleDeg");
+
+  // Start motor
+  digitalWrite(PIN_ENABLE, HIGH);
+  setPWM(CONSTANT_PWM);
+
+  startTime = millis();
+}
+
+// ======================================================
+// MAIN LOOP
+// ======================================================
+
+void loop() {
+  uint32_t elapsed = millis() - startTime;
+
+  // Check if 24 hours have elapsed
+  if (elapsed >= RUN_TIME_MS) {
+    // Stop motor after 24 hours
+    analogWrite(PIN_PWM, 410);
+    digitalWrite(PIN_ENABLE, LOW);
+    Serial.println("\\n=== Complete. 24 hours elapsed. Motor stopped. ===");
+    while(1);
+  }
+
+  // -------------------- DATA LOGGING --------------------
+  Serial.print(pwmDuty);
+  Serial.print(',');
+  Serial.println(getAngleDeg(), 3);
+
+  delay(100);  // 10 Hz sampling rate (100ms delay)
+}
+'''
+
+# PWM On/Off firmware (Cycles between 800 and 410, 5s each, 5 cycles)
+PWM_ON_OFF_FIRMWARE_CONTENT = '''#include <Encoder.h>
+
+// -------------------- Encoder --------------------
+#define ENC_A          27
+#define ENC_B          28
+#define ENC_MAXCOUNT   (4 * 4096 * 53)
+#define ENC_TO_DEG     (0.25f * 0.001658f)
+
+Encoder encoder(ENC_A, ENC_B);
+long encoderZeroOffset = 0;
+
+// -------------------- Motor Driver Pins --------------------
+const int PIN_PWM    = 8;
+const int PIN_ENABLE = 9;
+const int PIN_DIR    = 10;
+
+// -------------------- Timing --------------------
+const uint32_t CMD_TIME_MS = 5000;  // 5s per PWM value
+
+// -------------------- PWM Values --------------------
+const int PWM_HIGH = 800;   // High PWM value
+const int PWM_LOW = 410;    // Low PWM value (motor off)
+const int TOTAL_CYCLES = 5; // Number of cycles to repeat
+
+int currentCycle = 0;
+bool isHighPWM = true;  // Start with high PWM
+
+// -------------------- Current State --------------------
+uint32_t phaseStartTime = 0;
+uint16_t pwmDuty = 410;
+
+// ======================================================
+// ENCODER FUNCTIONS
+// ======================================================
+
+float getAngleDeg() {
+  long count = encoder.read() - encoderZeroOffset;
+
+  // Handle wraparound
+  if (count >= ENC_MAXCOUNT) {
+    encoderZeroOffset += ENC_MAXCOUNT;
+    count -= ENC_MAXCOUNT;
+  } else if (count <= -ENC_MAXCOUNT) {
+    encoderZeroOffset -= ENC_MAXCOUNT;
+    count += ENC_MAXCOUNT;
+  }
+
+  return ENC_TO_DEG * count;
+}
+
+// ======================================================
+// PWM FUNCTIONS
+// ======================================================
+
+void setPWM(uint16_t pwm) {
+  pwmDuty = constrain(pwm, 410, 3686);
+  analogWrite(PIN_PWM, pwmDuty);
+}
+
+// ======================================================
+// SETUP
+// ======================================================
+
+void setup() {
+  Serial.begin(9600);
+
+  // Initialize motor pins
+  pinMode(PIN_PWM, OUTPUT);
+  pinMode(PIN_ENABLE, OUTPUT);
+  pinMode(PIN_DIR, OUTPUT);
+  pinMode(ENC_A, INPUT_PULLUP);
+  pinMode(ENC_B, INPUT_PULLUP);
+
+  analogWriteResolution(12);
+  analogReadResolution(12);
+
+  // Motor OFF during initialization
+  digitalWrite(PIN_ENABLE, LOW);
+  digitalWrite(PIN_DIR, HIGH);
+  analogWrite(PIN_PWM, 410);
+
+  // Print configuration
+  Serial.print("High PWM: ");
+  Serial.print(PWM_HIGH);
+  Serial.print(", Low PWM: ");
+  Serial.print(PWM_LOW);
+  Serial.print(", Cycles: ");
+  Serial.println(TOTAL_CYCLES);
+
+  Serial.println("\\n=== PWM Cycling: 800->410 (5s each, 5 cycles) ===");
+  Serial.println("PWM,AngleDeg");
+
+  // Start motor with high PWM
+  digitalWrite(PIN_ENABLE, HIGH);
+  setPWM(PWM_HIGH);
+  currentCycle = 0;
+  isHighPWM = true;
+
+  phaseStartTime = millis();
+}
+
+// ======================================================
+// MAIN LOOP
+// ======================================================
+
+void loop() {
+  uint32_t elapsed = millis() - phaseStartTime;
+
+  // Check if it's time to switch PWM
+  if (elapsed >= CMD_TIME_MS) {
+    // Toggle between high and low PWM
+    if (isHighPWM) {
+      // Switch to low PWM
+      setPWM(PWM_LOW);
+      isHighPWM = false;
+      Serial.print("Cycle ");
+      Serial.print(currentCycle + 1);
+      Serial.println(": Switching to LOW PWM (410)");
+    } else {
+      // Switch to high PWM and increment cycle
+      currentCycle++;
+
+      if (currentCycle >= TOTAL_CYCLES) {
+        // All cycles complete, stop motor
+        analogWrite(PIN_PWM, 410);
+        digitalWrite(PIN_ENABLE, LOW);
+        Serial.println("\\n=== Complete. All cycles finished. Motor stopped. ===");
+        while(1);
+      } else {
+        setPWM(PWM_HIGH);
+        isHighPWM = true;
+        Serial.print("Cycle ");
+        Serial.print(currentCycle + 1);
+        Serial.println(": Switching to HIGH PWM (800)");
+      }
+    }
+
+    phaseStartTime = millis();
+  }
+
+  // -------------------- DATA LOGGING --------------------
+  Serial.print(pwmDuty);
+  Serial.print(',');
+  Serial.println(getAngleDeg(), 3);
+
+  delay(100);  // 10 Hz sampling rate
+}
+'''
+
 def get_firmware_content(firmware_type: str = "main") -> str:
     """
     Get embedded firmware content by type.
 
     Args:
         firmware_type: Type of firmware ("main" for firmware.ino,
-                      "angle_motor" for angle_motor.ino, "combined", or "random_torque")
+                      "angle_motor" for angle_motor.ino, "combined", "random_torque",
+                      "pwm_constant", or "pwm_on_off")
 
     Returns:
         Firmware source code as string
@@ -613,18 +882,24 @@ def get_firmware_content(firmware_type: str = "main") -> str:
         return FIRMWARE_INO_CONTENT
     elif firmware_type == "random_torque":
         return RANDOM_TORQUE_FIRMWARE_CONTENT
+    elif firmware_type == "pwm_constant":
+        return PWM_CONSTANT_FIRMWARE_CONTENT
+    elif firmware_type == "pwm_on_off":
+        return PWM_ON_OFF_FIRMWARE_CONTENT
     else:
         raise ValueError(f"Unknown firmware type: {firmware_type}")
 
 def get_available_firmware_types() -> list:
     """Get list of available firmware types."""
-    return ["combined", "random_torque"]
+    return ["combined", "random_torque", "pwm_constant", "pwm_on_off"]
 
 def get_firmware_display_name(firmware_type: str) -> str:
     """Get user-friendly display name for firmware type."""
     display_names = {
         "combined": "Interactive Control (Default)",
-        "random_torque": "Random Torque (Autonomous)"
+        "random_torque": "Random Torque (Autonomous)",
+        "pwm_constant": "PWM Constant (700 for 24h)",
+        "pwm_on_off": "PWM On/Off (800/410, 5s each)"
     }
     return display_names.get(firmware_type, firmware_type)
 
