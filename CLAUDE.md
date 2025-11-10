@@ -102,6 +102,11 @@ update_rate = 50
 - **Configuration-driven**: All parameters configurable via TOML files
 - **Error handling**: Comprehensive error management with user feedback
 
+### Coding Best Practices
+- **IMPORTANT: Avoid Unicode emojis in Python code and output**: Windows console uses cp1252 encoding which doesn't support Unicode emojis (✅, ❌, etc.). Using emojis will cause `UnicodeEncodeError: 'charmap' codec can't encode character` errors. Always use plain ASCII text for console output.
+- **Cross-platform compatibility**: Test on Windows as the primary target platform
+- **Python version**: Focus on Python 3.12 for development and CI testing
+
 ### File Structure Conventions
 - **`core/`**: Business logic and hardware interfaces
 - **`gui/`**: User interface components organized by function
@@ -122,7 +127,14 @@ update_rate = 50
 
 ## Testing and Validation
 
-No automated tests are currently implemented. Manual testing involves:
+### Continuous Integration
+- **Platform**: GitHub Actions CI tests on Windows with Python 3.12
+- **Test coverage**: Import tests, module loading, GUI instantiation, firmware resources
+- **Build testing**: PyInstaller build verification on Windows
+- **Code quality**: flake8 linting on Ubuntu (non-blocking)
+
+### Manual Testing
+Hardware-in-the-loop testing involves:
 - **Hardware-in-the-loop**: Testing with actual motor hardware
 - **Serial communication**: Verify protocol integrity
 - **GUI functionality**: Test all tabs and controls
