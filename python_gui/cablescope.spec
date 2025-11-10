@@ -49,7 +49,8 @@ a = Analysis(
         # GUI modules
         'gui.main_window',
         'gui.tabs.control_plots_tab',
-        'gui.tabs.settings_tab', 
+        'gui.tabs.pwm_only_tab',
+        'gui.tabs.settings_tab',
         'gui.tabs.firmware_tab',
         'gui.widgets.status_bar',
     ],

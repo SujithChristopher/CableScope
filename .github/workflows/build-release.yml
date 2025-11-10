@@ -8,9 +8,88 @@ on:
 
 permissions:
   contents: write  # Required for creating releases
-  
+
 jobs:
+  # Test job runs first
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('python_gui/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r python_gui/requirements.txt
+
+    - name: Install platform-specific dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 xvfb
+
+    - name: Test Python imports
+      run: |
+        cd python_gui
+        python -c "import PySide6; print('✅ PySide6 OK')"
+        python -c "import pyqtgraph; print('✅ pyqtgraph OK')"
+        python -c "import serial; print('✅ serial OK')"
+        python -c "import numpy; print('✅ numpy OK')"
+        python -c "import toml; print('✅ toml OK')"
+        python -c "import requests; print('✅ requests OK')"
+
+    - name: Test module imports
+      run: |
+        cd python_gui
+        python -c "from core.config_manager import ConfigManager; print('✅ ConfigManager')"
+        python -c "from core.serial_manager import SerialCommunicationManager; print('✅ SerialManager')"
+        python -c "from core.error_handler import ErrorHandler; print('✅ ErrorHandler')"
+        python -c "from core.arduino_cli_manager import ArduinoCliManager; print('✅ ArduinoCliManager')"
+        python -c "from gui.tabs.control_plots_tab import ControlPlotsTab; print('✅ ControlPlotsTab')"
+        python -c "from gui.tabs.pwm_only_tab import PWMOnlyTab; print('✅ PWMOnlyTab')"
+        python -c "from gui.tabs.settings_tab import SettingsTab; print('✅ SettingsTab')"
+        python -c "from gui.tabs.firmware_tab import FirmwareTab; print('✅ FirmwareTab')"
+
+    - name: Verify firmware resources
+      run: |
+        cd python_gui
+        python -c "from core.firmware_resources import get_available_firmware_types, get_firmware_content; types = get_available_firmware_types(); print(f'✅ Found {len(types)} firmware types: {types}')"
+
+    - name: Test GUI instantiation (headless)
+      if: runner.os == 'Linux'
+      run: |
+        cd python_gui
+        xvfb-run -a python -c "from PySide6.QtWidgets import QApplication; import sys; app = QApplication(sys.argv); print('✅ GUI instantiation OK')"
+
+    - name: Test GUI instantiation (non-headless)
+      if: runner.os != 'Linux'
+      run: |
+        cd python_gui
+        python -c "from PySide6.QtWidgets import QApplication; import sys; app = QApplication(sys.argv); print('✅ GUI instantiation OK')"
+
   build:
+    needs: test  # Only build if tests pass
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -166,11 +245,13 @@ jobs:
           ## CableScope Motor Control System ${{ github.ref_name }}
           
           ### 🚀 What's New
+          - **NEW**: PWM Only tab for simple PWM firmware testing with 24h endurance runs
           - Complete motor control system with real-time plotting
           - Arduino CLI auto-download functionality (no manual setup required!)
           - Enhanced CSV recording with desired vs actual torque tracking
           - Unified control and plotting interface
           - Teensy 4.1 support with optimized communication protocol
+          - Support for PWM_Constant and PWM_On_Off firmwares
           
           ### 📦 Installation
           1. Download the package for your platform
