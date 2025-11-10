@@ -14,36 +14,44 @@ import numpy as np
 
 class SerialCommunicationManager(QObject):
     """Manages serial communication with the motor control firmware"""
-    
+
     # Communication protocol constants
     HEADER1 = 0xFF
     HEADER2 = 0xFF
     CMD_SET_TORQUE = 0x01
     CMD_GET_DATA = 0x02
-    DATA_PACKET_SIZE = 13  # 1 byte cmd + 4 bytes torque + 4 bytes angle + 4 bytes PWM
+    CMD_START_SEQUENCE = 0x03  # Start random torque sequence
+    DATA_PACKET_SIZE_OLD = 13  # Old: 1 byte cmd + 4 bytes torque + 4 bytes angle + 4 bytes PWM
+    DATA_PACKET_SIZE = 21  # New: 1 byte cmd + 4 bytes millis + 4 bytes desired + 4 bytes actual + 4 bytes pwm + 4 bytes angle
     ACK_BYTE = 0xAA
-    
+
     # Signals
     connection_changed = Signal(bool)  # Connected/disconnected
     data_received = Signal(dict)       # {"torque": float, "angle": float}
     error_occurred = Signal(str)       # Error message
     ports_updated = Signal(list)       # Available ports list
     command_acknowledged = Signal()     # Command ACK received
-    
+    firmware_mode_detected = Signal(str)  # "interactive" or "random_torque" mode detected
+
     def __init__(self):
         super().__init__()
-        
+
         # Serial connection
         self.serial_port: Optional[serial.Serial] = None
         self.is_connected = False
         self.current_port = ""
         self.baud_rate = 115200
         self.timeout = 1.0
-        
+
         # Communication state
         self.last_torque_command = 0.0
         self.last_data_time = time.time()
         self.data_rate = 0.0
+
+        # Firmware mode detection (both use binary protocol, but behave differently)
+        self.firmware_mode = "interactive"  # "interactive" or "random_torque"
+        self.mode_detection_complete = False
+        self.ack_timeout_count = 0  # Count ACK timeouts to detect random_torque firmware
         
         # Port scanning timer
         self.port_scan_timer = QTimer()
@@ -198,21 +206,39 @@ class SerialCommunicationManager(QObject):
             # Test connection by sending a small torque command
             print("DEBUG: Testing communication with zero torque command...")
             test_success = self.send_torque_command(0.0, force_send=True)
-            
-            if test_success:
-                print("DEBUG: Communication test successful")
-                self.is_connected = True
-                self.current_port = port
-                self.baud_rate = baud_rate
-                self.timeout = timeout
-                self.connection_changed.emit(True)
-                return True
+
+            # Check if this is random_torque firmware (doesn't respond to commands)
+            if not test_success:
+                print("DEBUG: No ACK received - checking if this is random_torque firmware...")
+                # Wait a moment for potential data packets
+                time.sleep(0.5)
+                # If we received data without sending commands, it's random_torque firmware
+                if self.serial_port.in_waiting > 10:
+                    print("DEBUG: Detected random_torque firmware (autonomous mode)")
+                    self.firmware_mode = "random_torque"
+                    self.mode_detection_complete = True
+                    test_success = True  # Mark as successful connection
+                    self.firmware_mode_detected.emit("random_torque")
+                else:
+                    print("DEBUG: Communication test failed - no response")
+                    self.serial_port.close()
+                    self.serial_port = None
+                    self.error_occurred.emit(f"Failed to communicate with device on {port}")
+                    return False
             else:
-                print("DEBUG: Communication test failed")
-                self.serial_port.close()
-                self.serial_port = None
-                self.error_occurred.emit(f"Failed to communicate with device on {port}")
-                return False
+                print("DEBUG: ACK received - interactive firmware detected")
+                self.firmware_mode = "interactive"
+                self.mode_detection_complete = True
+                self.firmware_mode_detected.emit("interactive")
+
+            # Connection successful
+            print("DEBUG: Communication test successful")
+            self.is_connected = True
+            self.current_port = port
+            self.baud_rate = baud_rate
+            self.timeout = timeout
+            self.connection_changed.emit(True)
+            return True
             
         except serial.SerialException as e:
             print(f"DEBUG: Serial exception: {e}")
@@ -227,24 +253,36 @@ class SerialCommunicationManager(QObject):
         """Disconnect from current port"""
         if self.serial_port and self.serial_port.is_open:
             try:
-                # Send zero torque command before disconnecting
-                self.send_torque_command(0.0)
-                time.sleep(0.1)
+                # Send zero torque command before disconnecting (only for interactive mode)
+                if self.firmware_mode == "interactive":
+                    self.send_torque_command(0.0)
+                    time.sleep(0.1)
                 self.serial_port.close()
             except Exception as e:
                 self.error_occurred.emit(f"Error closing port: {e}")
-        
+
         self.serial_port = None
         self.is_connected = False
         self.current_port = ""
+
+        # Reset firmware mode detection for next connection
+        self.firmware_mode = "interactive"
+        self.mode_detection_complete = False
+        self.ack_timeout_count = 0
+
         self.connection_changed.emit(False)
     
     def send_torque_command(self, torque: float, force_send: bool = False) -> bool:
-        """Send torque command to the firmware"""
+        """Send torque command to the firmware (only for interactive mode)"""
+        # Random torque firmware doesn't accept/respond to torque commands
+        if self.firmware_mode == "random_torque":
+            print("DEBUG: Torque commands not supported in random_torque mode")
+            return True  # Return True to avoid errors
+
         if not force_send and (not self.is_connected or not self.serial_port):
             print(f"DEBUG: Cannot send torque command - connected: {self.is_connected}, port: {self.serial_port}")
             return False
-        
+
         if not self.serial_port:
             print("DEBUG: No serial port available")
             return False
@@ -306,72 +344,138 @@ class SerialCommunicationManager(QObject):
             print(f"DEBUG: Exception in send_torque_command: {e}")
             self.error_occurred.emit(f"Error sending torque command: {e}")
             return False
-    
+
+    def send_start_sequence_command(self) -> bool:
+        """Send start sequence command to random_torque firmware"""
+        if self.firmware_mode != "random_torque":
+            print("DEBUG: Start sequence command only works with random_torque firmware")
+            return False
+
+        if not self.is_connected or not self.serial_port:
+            print("DEBUG: Cannot send start command - not connected")
+            return False
+
+        try:
+            print("DEBUG: Sending start sequence command")
+
+            # Create command packet: Header(2) + Command(1)
+            packet = bytearray()
+            packet.append(self.HEADER1)
+            packet.append(self.HEADER2)
+            packet.append(self.CMD_START_SEQUENCE)
+
+            # Send packet
+            self.serial_port.write(packet)
+            self.serial_port.flush()
+
+            print("DEBUG: Start sequence command sent, waiting for ACK...")
+
+            # Wait for acknowledgment
+            start_time = time.time()
+            while time.time() - start_time < 2.0:
+                if self.serial_port.in_waiting >= 3:
+                    ack_data = self.serial_port.read(3)
+                    if (ack_data[0] == self.HEADER1 and
+                        ack_data[1] == self.HEADER2 and
+                        ack_data[2] == self.ACK_BYTE):
+                        print("DEBUG: Start sequence ACK received")
+                        return True
+                time.sleep(0.01)
+
+            print("DEBUG: Start sequence ACK timeout")
+            return False
+
+        except Exception as e:
+            print(f"DEBUG: Exception in send_start_sequence_command: {e}")
+            self.error_occurred.emit(f"Error sending start command: {e}")
+            return False
+
     def read_data_packet(self) -> Optional[Dict[str, float]]:
-        """Read a data packet from the firmware"""
+        """Read a data packet from the firmware (binary protocol)"""
         if not self.is_connected or not self.serial_port:
             return None
-        
+
         try:
             # Check if enough data is available
             if self.serial_port.in_waiting < 16:  # Full packet size (header + size + data + checksum)
                 return None
-            
+
             # Read and verify headers
             header_data = self.serial_port.read(3)
-            if (len(header_data) != 3 or 
-                header_data[0] != self.HEADER1 or 
+            if (len(header_data) != 3 or
+                header_data[0] != self.HEADER1 or
                 header_data[1] != self.HEADER2):
                 # Clear buffer and try again
                 self.serial_port.reset_input_buffer()
                 return None
             
             packet_size = header_data[2]
-            if packet_size != self.DATA_PACKET_SIZE:
+            # Support both old (13) and new (21) packet sizes for compatibility
+            if packet_size != self.DATA_PACKET_SIZE and packet_size != self.DATA_PACKET_SIZE_OLD:
                 self.serial_port.reset_input_buffer()
                 return None
-            
+
             # Read remaining packet data (data + checksum)
             remaining_data = self.serial_port.read(packet_size + 1)  # +1 for checksum
             if len(remaining_data) != packet_size + 1:
                 return None
-            
+
             # Extract command type
             command = remaining_data[0]
             if command != self.CMD_GET_DATA:
                 return None
-            
-            # Extract torque (4 bytes)
-            torque_bytes = remaining_data[1:5]
-            torque = struct.unpack('<f', torque_bytes)[0]
-            
-            # Extract angle (4 bytes)
-            angle_bytes = remaining_data[5:9]
-            angle = struct.unpack('<f', angle_bytes)[0]
 
-            # Extract PWM (4 bytes)
-            pwm_bytes = remaining_data[9:13]
-            pwm = struct.unpack('<f', pwm_bytes)[0]
+            # Parse based on packet size
+            if packet_size == self.DATA_PACKET_SIZE:
+                # New format: CMD(1) + Millis(4) + Desired(4) + Actual(4) + PWM(4) + Angle(4)
+                millis_bytes = remaining_data[1:5]
+                millis = struct.unpack('<f', millis_bytes)[0]
 
-            # Verify checksum (must match firmware calculation)
-            # Firmware calculates checksum for packet[2] through packet[15] (bytes 2-15)
-            # This corresponds to: packet_size + remaining_data[:-1]
-            received_checksum = remaining_data[13]  # Checksum is at index 13 (14th byte)
+                desired_torque_bytes = remaining_data[5:9]
+                desired_torque = struct.unpack('<f', desired_torque_bytes)[0]
+
+                actual_torque_bytes = remaining_data[9:13]
+                actual_torque = struct.unpack('<f', actual_torque_bytes)[0]
+
+                pwm_bytes = remaining_data[13:17]
+                pwm = struct.unpack('<f', pwm_bytes)[0]
+
+                angle_bytes = remaining_data[17:21]
+                angle = struct.unpack('<f', angle_bytes)[0]
+
+                checksum_index = 21
+            else:
+                # Old format: CMD(1) + Torque(4) + Angle(4) + PWM(4)
+                actual_torque_bytes = remaining_data[1:5]
+                actual_torque = struct.unpack('<f', actual_torque_bytes)[0]
+
+                angle_bytes = remaining_data[5:9]
+                angle = struct.unpack('<f', angle_bytes)[0]
+
+                pwm_bytes = remaining_data[9:13]
+                pwm = struct.unpack('<f', pwm_bytes)[0]
+
+                millis = 0.0  # Not available in old format
+                desired_torque = 0.0  # Not available in old format
+                checksum_index = 13
+
+            # Verify checksum
+            received_checksum = remaining_data[checksum_index]
             calculated_checksum = 0
 
-            # Add packet size byte (packet[2] in firmware)
+            # Add packet size byte
             calculated_checksum += packet_size
 
-            # Add remaining data bytes except the checksum itself (packet[3] through packet[15])
-            for byte in remaining_data[:13]:  # First 13 bytes (command + torque + angle + pwm)
+            # Add remaining data bytes except the checksum itself
+            for byte in remaining_data[:checksum_index]:
                 calculated_checksum += byte
-                
+
             calculated_checksum = (~calculated_checksum + 1) & 0xFF  # Two's complement
-            
+
             if received_checksum != calculated_checksum:
                 print(f"DEBUG: Checksum mismatch - received: 0x{received_checksum:02X}, calculated: 0x{calculated_checksum:02X}")
                 print(f"DEBUG: Packet size: 0x{packet_size:02X}")
-                print(f"DEBUG: Data bytes: {' '.join(f'0x{b:02X}' for b in remaining_data[:13])}")
+                print(f"DEBUG: Data bytes: {' '.join(f'0x{b:02X}' for b in remaining_data[:checksum_index])}")
                 self.error_occurred.emit(f"Data packet checksum verification failed (got 0x{received_checksum:02X}, expected 0x{calculated_checksum:02X})")
                 return None
             else:
@@ -381,7 +485,13 @@ class SerialCommunicationManager(QObject):
             self._data_count += 1
             self.last_data_time = time.time()
 
-            return {"torque": float(torque), "angle": float(angle), "pwm": float(pwm)}
+            return {
+                "millis": float(millis),
+                "desired_torque": float(desired_torque),
+                "torque": float(actual_torque),  # Keep "torque" for backward compatibility
+                "pwm": float(pwm),
+                "angle": float(angle)
+            }
             
         except struct.error as e:
             self.error_occurred.emit(f"Error unpacking data: {e}")

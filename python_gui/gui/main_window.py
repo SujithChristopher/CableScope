@@ -22,6 +22,7 @@ from core.error_handler import ErrorHandler
 from gui.tabs.control_plots_tab import ControlPlotsTab
 from gui.tabs.settings_tab import SettingsTab
 from gui.tabs.firmware_tab import FirmwareTab
+from gui.tabs.pwm_only_tab import PWMOnlyTab
 from gui.widgets.status_bar import EnhancedStatusBar
 from gui.styles.theme import ThemeManager
 
@@ -43,8 +44,8 @@ class MainWindow(QMainWindow):
         
         # Application state
         self.is_data_acquisition_active = False
-        self.current_data = {"torque": 0.0, "angle": 0.0, "pwm": 0.0}
-        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
+        self.current_data = {"torque": 0.0, "angle": 0.0, "pwm": 0.0, "millis": 0.0, "desired_torque": 0.0}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "millis": [], "desired_torque": [], "time": []}
         self.buffer_size = 1000
         self._loading_configuration = False  # Flag to prevent recursion
         
@@ -81,11 +82,13 @@ class MainWindow(QMainWindow):
         
         # Create tabs
         self.control_plots_tab = ControlPlotsTab()
+        self.pwm_only_tab = PWMOnlyTab()
         self.settings_tab = SettingsTab()
         self.firmware_tab = FirmwareTab()
-        
+
         # Add tabs
         self.tab_widget.addTab(self.control_plots_tab, "Control & Plots")
+        self.tab_widget.addTab(self.pwm_only_tab, "PWM Only")
         self.tab_widget.addTab(self.settings_tab, "Settings")
         self.tab_widget.addTab(self.firmware_tab, "Firmware")
         
@@ -206,13 +209,14 @@ class MainWindow(QMainWindow):
         self.serial_manager.error_occurred.connect(self.on_serial_error)
         self.serial_manager.ports_updated.connect(self.on_ports_updated)
         self.serial_manager.command_acknowledged.connect(self.on_command_acknowledged)
-        
+        self.serial_manager.firmware_mode_detected.connect(self.on_firmware_mode_detected)
+
         print("DEBUG: Serial manager signals connected")
-        
+
         # Error handler connections
         self.error_handler.error_occurred.connect(self.on_error_occurred)
         self.error_handler.warning_occurred.connect(self.on_warning_occurred)
-        
+
         # Control & Plots tab connections
         self.control_plots_tab.torque_command_requested.connect(self.send_torque_command)
         self.control_plots_tab.connection_requested.connect(self.connect_to_port)
@@ -224,7 +228,7 @@ class MainWindow(QMainWindow):
         self.control_plots_tab.recording_start_requested.connect(self.start_recording)
         self.control_plots_tab.recording_stop_requested.connect(self.stop_recording)
         self.control_plots_tab.refresh_ports_requested.connect(self.serial_manager.force_scan_ports)
-        
+
         # Connect command acknowledgment to UI feedback
         self.serial_manager.command_acknowledged.connect(self.control_plots_tab.on_command_acknowledged)
         
@@ -258,6 +262,7 @@ class MainWindow(QMainWindow):
             
             # Pass configuration to tabs
             self.control_plots_tab.load_configuration(config)
+            self.pwm_only_tab.load_configuration(config)
             self.settings_tab.load_configuration(config)
             self.firmware_tab.load_configuration(config)
             
@@ -310,30 +315,53 @@ class MainWindow(QMainWindow):
         """Start data acquisition"""
         if self.is_data_acquisition_active:
             return
-        
+
         if not self.serial_manager.is_connected:
-            QMessageBox.warning(self, "Connection Required", 
+            QMessageBox.warning(self, "Connection Required",
                               "Please connect to a device before starting data acquisition.")
             return
-        
+
         try:
             # Start data reading
             if self.serial_manager.start_data_reading():
                 self.is_data_acquisition_active = True
-                
+
                 # Update UI
                 self.start_action.setEnabled(False)
                 self.stop_action.setEnabled(True)
                 self.control_plots_tab.set_data_acquisition_active(True)
-                
+
                 # Update status
                 self.enhanced_status_bar.set_data_acquisition_status(True)
-                self.enhanced_status_bar.show_message("Data acquisition started", 3000)
-                
+
+                # For random_torque firmware: auto-start recording and send start command
+                if self.serial_manager.firmware_mode == "random_torque":
+                    # Auto-start recording with timestamp filename
+                    from datetime import datetime
+                    from pathlib import Path
+
+                    # Create recordings directory
+                    save_path = Path.home() / "CableScope" / "recordings"
+                    save_path.mkdir(parents=True, exist_ok=True)
+
+                    # Generate filename with timestamp
+                    filename = save_path / f"random_torque_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+                    # Start recording
+                    self.start_recording(str(filename))
+
+                    # Send start sequence command to firmware
+                    if self.serial_manager.send_start_sequence_command():
+                        self.enhanced_status_bar.show_message("Random torque sequence started - Recording to CSV", 5000)
+                    else:
+                        self.enhanced_status_bar.show_message("Warning: Failed to start sequence, but recording...", 5000)
+                else:
+                    self.enhanced_status_bar.show_message("Data acquisition started", 3000)
+
                 self.error_handler.log_info("Data acquisition started")
             else:
                 self.error_handler.log_error("DataAcquisition", "Failed to start data reading")
-                
+
         except Exception as e:
             self.error_handler.log_error("DataAcquisition", f"Error starting data acquisition: {e}")
     
@@ -488,7 +516,7 @@ class MainWindow(QMainWindow):
     
     def clear_data_buffer(self):
         """Clear the data buffer"""
-        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "millis": [], "desired_torque": [], "time": []}
         self.control_plots_tab.clear_all_data()
         self.enhanced_status_bar.show_message("Data buffer cleared", 2000)
     
@@ -531,6 +559,13 @@ class MainWindow(QMainWindow):
                 current_config = self.config_manager.get_full_config()
                 current_config.update(firmware_config)
                 self.config_manager.save_config(current_config)
+
+            # Save PWM only tab configuration
+            pwm_config = self.pwm_only_tab.save_configuration()
+            if pwm_config:
+                current_config = self.config_manager.get_full_config()
+                current_config.update(pwm_config)
+                self.config_manager.save_config(current_config)
             
             self.enhanced_status_bar.show_message("Configuration saved", 2000)
             
@@ -544,12 +579,17 @@ class MainWindow(QMainWindow):
             size = self.size()
             self.config_manager.set_window_size(size.width(), size.height())
             
-            # Save firmware tab configuration (Arduino CLI path, etc.) 
+            # Save firmware tab configuration (Arduino CLI path, etc.)
             firmware_config = self.firmware_tab.save_configuration()
             current_config = self.config_manager.get_full_config()
             if firmware_config:
                 current_config.update(firmware_config)
-            
+
+            # Save PWM only tab configuration
+            pwm_config = self.pwm_only_tab.save_configuration()
+            if pwm_config:
+                current_config.update(pwm_config)
+
             # Save configuration directly without going through settings tab to avoid recursion
             self.config_manager.save_config(current_config)
             
@@ -638,14 +678,16 @@ class MainWindow(QMainWindow):
         try:
             # Update current data
             self.current_data = data.copy()
-            
+
             # Add to buffer
             import time
             current_time = time.time()
-            
+
             self.data_buffer["torque"].append(data["torque"])
             self.data_buffer["angle"].append(data["angle"])
             self.data_buffer["pwm"].append(data.get("pwm", 0.0))  # Handle legacy data without PWM
+            self.data_buffer["millis"].append(data.get("millis", 0.0))  # Handle millis from new firmware
+            self.data_buffer["desired_torque"].append(data.get("desired_torque", 0.0))  # Handle desired torque from new firmware
             self.data_buffer["time"].append(current_time)
 
             # Limit buffer size
@@ -653,14 +695,16 @@ class MainWindow(QMainWindow):
                 self.data_buffer["torque"] = self.data_buffer["torque"][-self.buffer_size:]
                 self.data_buffer["angle"] = self.data_buffer["angle"][-self.buffer_size:]
                 self.data_buffer["pwm"] = self.data_buffer["pwm"][-self.buffer_size:]
+                self.data_buffer["millis"] = self.data_buffer["millis"][-self.buffer_size:]
+                self.data_buffer["desired_torque"] = self.data_buffer["desired_torque"][-self.buffer_size:]
                 self.data_buffer["time"] = self.data_buffer["time"][-self.buffer_size:]
-            
+
             # Update plotting tab
             self.control_plots_tab.update_data(self.data_buffer)
-            
+
             # Update status bar
             self.enhanced_status_bar.increment_data_count()
-            
+
         except Exception as e:
             self.error_handler.log_error("DataProcessing", f"Error processing received data: {e}")
     
@@ -680,7 +724,18 @@ class MainWindow(QMainWindow):
     def on_command_acknowledged(self):
         """Handle command acknowledgment"""
         self.enhanced_status_bar.set_last_command_time()
-    
+
+    @Slot(str)
+    def on_firmware_mode_detected(self, mode: str):
+        """Handle firmware mode detection"""
+        print(f"DEBUG: Firmware mode detected: {mode}")
+        # Update control tab with firmware mode
+        if hasattr(self, 'control_plots_tab'):
+            self.control_plots_tab.set_firmware_mode(mode)
+        # Show notification to user
+        mode_display = "Interactive Control" if mode == "interactive" else "Random Torque (Autonomous)"
+        self.enhanced_status_bar.show_message(f"Firmware Mode: {mode_display}", 5000)
+
     @Slot(str, str)
     def on_error_occurred(self, error_type: str, message: str):
         """Handle error from error handler"""
@@ -752,6 +807,8 @@ class MainWindow(QMainWindow):
             # Cleanup tabs
             if hasattr(self, 'control_plots_tab'):
                 self.control_plots_tab.cleanup()
+            if hasattr(self, 'pwm_only_tab'):
+                self.pwm_only_tab.cleanup()
             
             # Stop data acquisition
             if self.is_data_acquisition_active:

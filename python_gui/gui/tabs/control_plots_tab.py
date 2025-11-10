@@ -37,7 +37,7 @@ class ControlPlotsTab(QWidget):
     
     def __init__(self):
         super().__init__()
-        
+
         # Control state variables
         self.is_connected = False
         self.is_data_acquisition_active = False
@@ -46,16 +46,19 @@ class ControlPlotsTab(QWidget):
         self.max_torque = 40.0
         self.torque_step = 0.1
         self.available_ports = []
-        
+
+        # Firmware mode
+        self.firmware_mode = "interactive"  # "interactive" or "random_torque"
+
         # Plot configuration
         self.time_window = 10.0
         self.update_rate = 10  # 100Hz plot updates
         self.buffer_size = 1000
-        
+
         # Data storage
-        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": []}
+        self.data_buffer = {"torque": [], "angle": [], "pwm": [], "time": [], "desired_torque": [], "millis": []}
         self.plot_data = {"torque": {"x": [], "y": []}, "angle": {"x": [], "y": []}}
-        
+
         # Recording state
         self.is_recording = False
         self.recording_file = None
@@ -429,23 +432,40 @@ class ControlPlotsTab(QWidget):
     def update_ui_state(self):
         """Update UI state based on current conditions"""
         # Connection-dependent controls
-        self.send_torque_button.setEnabled(self.is_connected)
-        self.torque_spinbox.setEnabled(self.is_connected)
-        self.torque_slider.setEnabled(self.is_connected)
+        # In random_torque mode, torque controls are disabled (firmware is autonomous)
+        torque_controls_enabled = self.is_connected and self.firmware_mode == "interactive"
+
+        self.send_torque_button.setEnabled(torque_controls_enabled)
+        self.torque_spinbox.setEnabled(torque_controls_enabled)
+        self.torque_slider.setEnabled(torque_controls_enabled)
         self.start_data_button.setEnabled(self.is_connected and not self.is_data_acquisition_active)
         self.stop_data_button.setEnabled(self.is_connected and self.is_data_acquisition_active)
-        
+
         # Connection button states
         self.connect_button.setEnabled(not self.is_connected and len(self.available_ports) > 0)
         self.disconnect_button.setEnabled(self.is_connected)
-        
-        # Emergency controls are always enabled when connected
-        self.emergency_stop_button.setEnabled(self.is_connected)
-        self.zero_torque_button.setEnabled(self.is_connected)
-        
+
+        # Emergency controls - only for interactive mode
+        self.emergency_stop_button.setEnabled(torque_controls_enabled)
+        self.zero_torque_button.setEnabled(torque_controls_enabled)
+
         # Recording controls
         self.start_recording_button.setEnabled(self.is_data_acquisition_active and not self.is_recording)
         self.stop_recording_button.setEnabled(self.is_recording)
+
+    def set_firmware_mode(self, mode: str):
+        """Set firmware mode and update UI accordingly"""
+        self.firmware_mode = mode
+        print(f"DEBUG: Firmware mode set to: {mode}")
+
+        # Update torque control group title to indicate mode
+        if hasattr(self, 'torque_control_group'):
+            if mode == "random_torque":
+                self.torque_control_group.setTitle("Torque Control (Disabled - Autonomous Mode)")
+            else:
+                self.torque_control_group.setTitle("Torque Control")
+
+        self.update_ui_state()
     
     # Configuration methods
     def load_configuration(self, config: Dict[str, Any]):
@@ -692,7 +712,7 @@ class ControlPlotsTab(QWidget):
                 self.recording_writer = csv.writer(self.recording_file)
                 
                 # Write header
-                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Desired Torque (Nm)', 'Actual Torque (Nm)', 'Angle (deg)', 'PWM Value'])
+                self.recording_writer.writerow(['Timestamp', 'Time (s)', 'Millis', 'Desired Torque (Nm)', 'Actual Torque (Nm)', 'Angle (deg)', 'PWM Value'])
                 
                 self.is_recording = True
                 self.recording_start_time = time.time()
@@ -736,22 +756,25 @@ class ControlPlotsTab(QWidget):
         """Record current data point"""
         if not self.data_buffer["time"]:
             return
-        
+
         try:
             # Get the most recent data point
             latest_idx = -1
-            
+
             current_time = self.data_buffer["time"][latest_idx]
             relative_time = current_time - self.recording_start_time
             torque = self.data_buffer["torque"][latest_idx]
             angle = self.data_buffer["angle"][latest_idx]
             pwm = self.data_buffer.get("pwm", [0.0])[latest_idx]  # Handle legacy data without PWM
+            millis = self.data_buffer.get("millis", [0.0])[latest_idx]  # Get millis from firmware
+            desired_torque = self.data_buffer.get("desired_torque", [self.current_desired_torque])[latest_idx]  # Get desired from firmware or use UI value
 
             # Write to CSV
             self.recording_writer.writerow([
                 datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
                 f"{relative_time:.3f}",
-                f"{self.current_desired_torque:.6f}",
+                f"{millis:.0f}",  # Millis as integer
+                f"{desired_torque:.6f}",
                 f"{torque:.6f}",
                 f"{angle:.3f}",
                 f"{pwm:.3f}"
