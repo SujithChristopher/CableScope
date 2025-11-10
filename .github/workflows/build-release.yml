@@ -10,142 +10,104 @@ permissions:
   contents: write  # Required for creating releases
 
 jobs:
-  # Test job runs first
+  # Test job runs first - Windows only with Python 3.12
   test:
-    name: Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
-        python-version: ['3.10', '3.11', '3.12']
+    name: Test on Windows - Python 3.12
+    runs-on: windows-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.12'
 
     - name: Cache pip dependencies
       uses: actions/cache@v4
       with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('python_gui/requirements.txt') }}
+        path: ~\AppData\Local\pip\Cache
+        key: Windows-pip-3.12-${{ hashFiles('python_gui/requirements.txt') }}
         restore-keys: |
-          ${{ runner.os }}-pip-${{ matrix.python-version }}-
-          ${{ runner.os }}-pip-
+          Windows-pip-3.12-
+          Windows-pip-
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r python_gui/requirements.txt
 
-    - name: Install platform-specific dependencies (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 xvfb
-
-    - name: Test Python imports
-      run: |
-        cd python_gui
-        python -c "import PySide6; print('✅ PySide6 OK')"
-        python -c "import pyqtgraph; print('✅ pyqtgraph OK')"
-        python -c "import serial; print('✅ serial OK')"
-        python -c "import numpy; print('✅ numpy OK')"
-        python -c "import toml; print('✅ toml OK')"
-        python -c "import requests; print('✅ requests OK')"
-
-    - name: Test module imports
-      run: |
-        cd python_gui
-        python -c "from core.config_manager import ConfigManager; print('✅ ConfigManager')"
-        python -c "from core.serial_manager import SerialCommunicationManager; print('✅ SerialManager')"
-        python -c "from core.error_handler import ErrorHandler; print('✅ ErrorHandler')"
-        python -c "from core.arduino_cli_manager import ArduinoCliManager; print('✅ ArduinoCliManager')"
-        python -c "from gui.tabs.control_plots_tab import ControlPlotsTab; print('✅ ControlPlotsTab')"
-        python -c "from gui.tabs.pwm_only_tab import PWMOnlyTab; print('✅ PWMOnlyTab')"
-        python -c "from gui.tabs.settings_tab import SettingsTab; print('✅ SettingsTab')"
-        python -c "from gui.tabs.firmware_tab import FirmwareTab; print('✅ FirmwareTab')"
-
-    - name: Verify firmware resources
-      run: |
-        cd python_gui
-        python -c "from core.firmware_resources import get_available_firmware_types, get_firmware_content; types = get_available_firmware_types(); print(f'✅ Found {len(types)} firmware types: {types}')"
-
-    - name: Test GUI instantiation (headless)
-      if: runner.os == 'Linux'
-      run: |
-        cd python_gui
-        xvfb-run -a python -c "from PySide6.QtWidgets import QApplication; import sys; app = QApplication(sys.argv); print('✅ GUI instantiation OK')"
-
-    - name: Test GUI instantiation (non-headless)
-      if: runner.os != 'Linux'
-      run: |
-        cd python_gui
-        python -c "from PySide6.QtWidgets import QApplication; import sys; app = QApplication(sys.argv); print('✅ GUI instantiation OK')"
-
-  build:
-    needs: test  # Only build if tests pass
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            output_name: CableScope-Windows-x64
-            python_arch: x64
-          # TODO: Fix Linux and macOS builds later
-          # - os: ubuntu-latest
-          #   output_name: CableScope-Linux-x64
-          #   python_arch: x64
-          # - os: macos-latest
-          #   output_name: CableScope-macOS-x64
-          #   python_arch: x64
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        architecture: ${{ matrix.python_arch }}
-        
-    - name: Cache pip dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('python_gui/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-          
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r python_gui/requirements.txt
-        pip install pyinstaller
-        
-    - name: Install platform-specific dependencies (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
-        
     - name: Test Python imports
       run: |
         cd python_gui
         python -c "import PySide6; print('PySide6 OK')"
         python -c "import pyqtgraph; print('pyqtgraph OK')"
         python -c "import serial; print('serial OK')"
-        
-    - name: Build with PyInstaller (Windows)
-      if: runner.os == 'Windows'
+        python -c "import numpy; print('numpy OK')"
+        python -c "import toml; print('toml OK')"
+        python -c "import requests; print('requests OK')"
+
+    - name: Test module imports
+      run: |
+        cd python_gui
+        python -c "from core.config_manager import ConfigManager; print('ConfigManager OK')"
+        python -c "from core.serial_manager import SerialCommunicationManager; print('SerialManager OK')"
+        python -c "from core.error_handler import ErrorHandler; print('ErrorHandler OK')"
+        python -c "from core.arduino_cli_manager import ArduinoCliManager; print('ArduinoCliManager OK')"
+        python -c "from gui.tabs.control_plots_tab import ControlPlotsTab; print('ControlPlotsTab OK')"
+        python -c "from gui.tabs.pwm_only_tab import PWMOnlyTab; print('PWMOnlyTab OK')"
+        python -c "from gui.tabs.settings_tab import SettingsTab; print('SettingsTab OK')"
+        python -c "from gui.tabs.firmware_tab import FirmwareTab; print('FirmwareTab OK')"
+
+    - name: Verify firmware resources
+      run: |
+        cd python_gui
+        python -c "from core.firmware_resources import get_available_firmware_types, get_firmware_content; types = get_available_firmware_types(); print(f'Found {len(types)} firmware types: {types}')"
+
+    - name: Test GUI instantiation
+      run: |
+        cd python_gui
+        python -c "from PySide6.QtWidgets import QApplication; import sys; app = QApplication(sys.argv); print('GUI instantiation OK')"
+
+  build:
+    needs: test  # Only build if tests pass
+    name: Build Windows Release - Python 3.12
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        architecture: x64
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~\AppData\Local\pip\Cache
+        key: Windows-pip-3.12-${{ hashFiles('python_gui/requirements.txt') }}
+        restore-keys: |
+          Windows-pip-3.12-
+          Windows-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r python_gui/requirements.txt
+        pip install pyinstaller
+
+    - name: Test Python imports
+      run: |
+        cd python_gui
+        python -c "import PySide6; print('PySide6 OK')"
+        python -c "import pyqtgraph; print('pyqtgraph OK')"
+        python -c "import serial; print('serial OK')"
+
+    - name: Build with PyInstaller
       run: |
         cd python_gui
         python -m PyInstaller cablescope.spec --clean --noconfirm
@@ -157,73 +119,28 @@ jobs:
           exit 1
         }
       shell: pwsh
-      
-    - name: Build with PyInstaller (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        cd python_gui
-        python -m PyInstaller cablescope.spec --clean --noconfirm
-        ls -la dist/
-        if [ -d "dist/CableScope" ]; then
-          tar -czvf ../CableScope-Linux-x64.tar.gz -C dist CableScope
-        else
-          echo "Build directory not found"
-          exit 1
-        fi
-        
-    - name: Build with PyInstaller (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        cd python_gui
-        python -m PyInstaller cablescope.spec --clean --noconfirm
-        ls -la dist/
-        if [ -d "dist/CableScope" ]; then
-          cd dist && zip -r ../../CableScope-macOS-x64.zip CableScope
-        else
-          echo "Build directory not found"
-          exit 1
-        fi
-        
-    - name: Verify build output (Windows)
-      if: runner.os == 'Windows'
+
+    - name: Verify build output
       run: |
         dir
-        if (Test-Path "CableScope-Windows-x64.zip") { Write-Host "✅ Windows build successful" } else { Write-Host "❌ Windows build failed" }
+        if (Test-Path "CableScope-Windows-x64.zip") {
+          Write-Host "Windows build successful"
+        } else {
+          Write-Host "Windows build failed"
+          exit 1
+        }
       shell: pwsh
-        
-    - name: Verify build output (Unix)
-      if: runner.os != 'Windows'  
-      run: |
-        ls -la
-        if [ -f "CableScope-*.tar.gz" ] || [ -f "CableScope-*.zip" ]; then echo "✅ Build successful"; else echo "❌ Build failed"; fi
-        
-    # Upload artifacts for debugging
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.output_name }}
-        path: |
-          CableScope-*.zip
-          CableScope-*.tar.gz
-          
-    # Create release assets
-    - name: Prepare release asset (Windows)
-      if: runner.os == 'Windows'
+        name: CableScope-Windows-x64
+        path: CableScope-Windows-x64.zip
+
+    - name: Prepare release asset
       run: |
         echo "ASSET_NAME=CableScope-Windows-x64.zip" >> $env:GITHUB_ENV
         echo "ASSET_PATH=CableScope-Windows-x64.zip" >> $env:GITHUB_ENV
-        
-    - name: Prepare release asset (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        echo "ASSET_NAME=CableScope-Linux-x64.tar.gz" >> $GITHUB_ENV
-        echo "ASSET_PATH=CableScope-Linux-x64.tar.gz" >> $GITHUB_ENV
-        
-    - name: Prepare release asset (macOS)  
-      if: runner.os == 'macOS'
-      run: |
-        echo "ASSET_NAME=CableScope-macOS-x64.zip" >> $GITHUB_ENV
-        echo "ASSET_PATH=CableScope-macOS-x64.zip" >> $GITHUB_ENV
 
   # Create release if triggered by tag
   create-release:
@@ -243,28 +160,28 @@ jobs:
         name: CableScope ${{ github.ref_name }}
         body: |
           ## CableScope Motor Control System ${{ github.ref_name }}
-          
-          ### 🚀 What's New
-          - **NEW**: PWM Only tab for simple PWM firmware testing with 24h endurance runs
+
+          ### What's New
+          - PWM Only tab for simple PWM firmware testing with 24h endurance runs
           - Complete motor control system with real-time plotting
-          - Arduino CLI auto-download functionality (no manual setup required!)
+          - Arduino CLI auto-download functionality (no manual setup required)
           - Enhanced CSV recording with desired vs actual torque tracking
           - Unified control and plotting interface
           - Teensy 4.1 support with optimized communication protocol
           - Support for PWM_Constant and PWM_On_Off firmwares
-          
-          ### 📦 Installation
-          1. Download the package for your platform
-          2. Extract and run the executable
+
+          ### Installation
+          1. Download CableScope-Windows-x64.zip
+          2. Extract and run CableScope.exe
           3. Arduino CLI will be downloaded automatically on first use
-          
-          ### 🔧 Hardware Requirements
+
+          ### Hardware Requirements
           - Teensy 4.1 (recommended) or Arduino variants
           - HX711 torque sensor (pins 32/33)
           - Quadrature encoder (pins 27/28)
           - Motor driver with PWM control (pins 8/9/10)
-          
-          ### 📖 Documentation
+
+          ### Documentation
           See README.md for complete setup instructions.
         files: |
           CableScope-*.zip
