@@ -22,6 +22,7 @@ from core.error_handler import ErrorHandler
 from gui.tabs.control_plots_tab import ControlPlotsTab
 from gui.tabs.settings_tab import SettingsTab
 from gui.tabs.firmware_tab import FirmwareTab
+from gui.tabs.pwm_only_tab import PWMOnlyTab
 from gui.widgets.status_bar import EnhancedStatusBar
 from gui.styles.theme import ThemeManager
 
@@ -81,11 +82,13 @@ class MainWindow(QMainWindow):
         
         # Create tabs
         self.control_plots_tab = ControlPlotsTab()
+        self.pwm_only_tab = PWMOnlyTab()
         self.settings_tab = SettingsTab()
         self.firmware_tab = FirmwareTab()
-        
+
         # Add tabs
         self.tab_widget.addTab(self.control_plots_tab, "Control & Plots")
+        self.tab_widget.addTab(self.pwm_only_tab, "PWM Only")
         self.tab_widget.addTab(self.settings_tab, "Settings")
         self.tab_widget.addTab(self.firmware_tab, "Firmware")
         
@@ -259,6 +262,7 @@ class MainWindow(QMainWindow):
             
             # Pass configuration to tabs
             self.control_plots_tab.load_configuration(config)
+            self.pwm_only_tab.load_configuration(config)
             self.settings_tab.load_configuration(config)
             self.firmware_tab.load_configuration(config)
             
@@ -555,6 +559,13 @@ class MainWindow(QMainWindow):
                 current_config = self.config_manager.get_full_config()
                 current_config.update(firmware_config)
                 self.config_manager.save_config(current_config)
+
+            # Save PWM only tab configuration
+            pwm_config = self.pwm_only_tab.save_configuration()
+            if pwm_config:
+                current_config = self.config_manager.get_full_config()
+                current_config.update(pwm_config)
+                self.config_manager.save_config(current_config)
             
             self.enhanced_status_bar.show_message("Configuration saved", 2000)
             
@@ -568,12 +579,17 @@ class MainWindow(QMainWindow):
             size = self.size()
             self.config_manager.set_window_size(size.width(), size.height())
             
-            # Save firmware tab configuration (Arduino CLI path, etc.) 
+            # Save firmware tab configuration (Arduino CLI path, etc.)
             firmware_config = self.firmware_tab.save_configuration()
             current_config = self.config_manager.get_full_config()
             if firmware_config:
                 current_config.update(firmware_config)
-            
+
+            # Save PWM only tab configuration
+            pwm_config = self.pwm_only_tab.save_configuration()
+            if pwm_config:
+                current_config.update(pwm_config)
+
             # Save configuration directly without going through settings tab to avoid recursion
             self.config_manager.save_config(current_config)
             
@@ -791,6 +807,8 @@ class MainWindow(QMainWindow):
             # Cleanup tabs
             if hasattr(self, 'control_plots_tab'):
                 self.control_plots_tab.cleanup()
+            if hasattr(self, 'pwm_only_tab'):
+                self.pwm_only_tab.cleanup()
             
             # Stop data acquisition
             if self.is_data_acquisition_active:
