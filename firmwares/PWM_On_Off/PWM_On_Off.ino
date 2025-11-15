@@ -15,12 +15,12 @@ const int PIN_ENABLE = 9;
 const int PIN_DIR    = 10;
 
 // -------------------- Timing --------------------
-const uint32_t CMD_TIME_MS = 5000;  // 5s per PWM value
+const uint32_t CMD_TIME_MS = 3500;  // 3.5s per PWM value
 
 // -------------------- PWM Values --------------------
-const int PWM_HIGH = 800;   // High PWM value
+const int PWM_HIGH = 700;   // High PWM value
 const int PWM_LOW = 410;    // Low PWM value (motor off)
-const int TOTAL_CYCLES = 5; // Number of cycles to repeat
+const int TOTAL_CYCLES = 10000; // Number of cycles to repeat
 
 int currentCycle = 0;
 bool isHighPWM = true;  // Start with high PWM
@@ -87,7 +87,7 @@ void setup() {
   Serial.print(", Cycles: ");
   Serial.println(TOTAL_CYCLES);
   
-  Serial.println("\n=== PWM Cycling: 800->410 (5s each, 5 cycles) ===");
+  Serial.println("\n=== PWM Cycling: 700->410 (3.5s each, 10000 cycles) ===");
   Serial.println("PWM,AngleDeg");
   
   // Start motor with high PWM
@@ -131,7 +131,7 @@ void loop() {
         isHighPWM = true;
         Serial.print("Cycle ");
         Serial.print(currentCycle + 1);
-        Serial.println(": Switching to HIGH PWM (800)");
+        Serial.println(": Switching to HIGH PWM (700)");
       }
     }
     

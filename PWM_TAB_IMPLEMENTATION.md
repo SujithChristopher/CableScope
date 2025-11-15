@@ -38,7 +38,7 @@ Successfully implemented a new "PWM Only" tab in CableScope for testing simple P
    - Output format: `PWM,AngleDeg`
    - Auto-stops after 24 hours
 
-2. **PWM_On_Off**: Cycles between PWM 800 and 410
+2. **PWM_On_Off**: Cycles between PWM 700 and 410
    - Duration: 5 seconds each
    - Total cycles: 5
    - Sample rate: 10 Hz

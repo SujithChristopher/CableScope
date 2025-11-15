@@ -204,7 +204,7 @@ class PWMOnlyTab(QWidget):
         # Available firmware types mapped to firmware_resources types
         self.firmware_types = {
             "PWM Constant (700 for 24h)": "pwm_constant",
-            "PWM On/Off (800/410, 5s each)": "pwm_on_off"
+            "PWM On/Off (700/410, 3.5s each)": "pwm_on_off"
         }
 
         self.setup_ui()

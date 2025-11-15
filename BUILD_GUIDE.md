@@ -261,7 +261,7 @@ All firmwares are **embedded directly in the executable** via `core/firmware_res
    - 10 Hz data logging
 
 3. **PWM On/Off** (`firmwares/PWM_On_Off/PWM_On_Off.ino`)
-   - Alternating PWM (800/410)
+   - Alternating PWM (700/410)
    - 5-second intervals
    - 5 cycle testing
 
